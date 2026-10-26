@@ -35,6 +35,13 @@
 
         <StarIssueBoards v-if="isStarIssueBoardsEnabled" />
 
+        <ContributorsSidebar
+            v-if="isContributorsSidebarEnabled && projectPath"
+            :key="projectPath"
+            :current-project-path="projectPath"
+            :is-group="isGroupPage"
+        />
+
         <QuickReactions
             v-if="isQuickReactionsEnabled && isMergeRequestPage && iid"
             :current-project-path="projectPath"
@@ -55,6 +62,7 @@
         ref,
     } from 'vue';
     import CommandPanelEnhancer from './components/CommandPanelEnhancer.vue';
+    import ContributorsSidebar from './components/ContributorsSidebar.vue';
     import IssueDetail from './components/IssueDetail.vue';
     import MergeRequestDetail from './components/MergeRequestDetail.vue';
     import MyUnresolvedThreads from './components/MyUnresolvedThreads.vue';
@@ -76,6 +84,7 @@
     import {
         BrowserMessageType,
         MittEventKey,
+        PageType,
         Preference,
     } from './enums';
     import { useExtensionStore } from './store';
@@ -100,6 +109,7 @@
         isBoardPage,
         isTodoPage,
         isGroupPage,
+        pageType,
     } = storeToRefs(pageDetectionStore);
 
     const effectiveIid = computed(() => panelContext.value?.iid ?? iid.value);
@@ -118,6 +128,10 @@
 
     const isScopedLabelsDropdownEnabled = computed(() => getSetting(Preference.GENERAL_SCOPED_LABELS_DROPDOWN, true) && csrfToken.value && (isBoardPage.value || (effectiveIid.value && (isMergeRequestPage.value || isIssuePage.value))));
     const isStarIssueBoardsEnabled = computed(() => getSetting(Preference.ISSUE_STAR_BOARDS, true) && isBoardPage.value);
+    const isContributorsSidebarEnabled = computed(() => getSetting(Preference.MR_CONTRIBUTORS_SIDEBAR, true) && [
+        PageType.PROJECT_MERGE_REQUESTS,
+        PageType.GROUP_MERGE_REQUESTS,
+    ].includes(pageType.value));
     const isQuickReactionsEnabled = computed(() => !!(getSetting(Preference.MR_QUICK_REACTIONS, DEFAULT_QUICK_REACTIONS) as string || '').trim());
 
     function checkIsMrIssueOverviewReady() {

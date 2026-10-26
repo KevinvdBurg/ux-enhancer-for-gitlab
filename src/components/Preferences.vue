@@ -194,6 +194,7 @@
 >
     import {
         mdiAccountCheckOutline,
+        mdiAccountGroupOutline,
         mdiAccountCircleOutline,
         mdiCheckDecagramOutline,
         mdiChevronDown,
@@ -547,6 +548,15 @@
                 isGitlabIcon: false,
                 iconClassName: '',
                 defaultValue: false,
+            },
+            {
+                label: 'Contributors sidebar',
+                title: 'Lists authors and reviewers of the merge requests, busiest first',
+                key: Preference.MR_CONTRIBUTORS_SIDEBAR,
+                icon: mdiAccountGroupOutline,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: true,
             },
             {
                 label: 'Hotkey mark as viewed',

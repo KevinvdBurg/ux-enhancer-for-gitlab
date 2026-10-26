@@ -49,6 +49,7 @@ I only have access to the GitLab version used at our company, so I might not cat
 - Highlight your MRs
 - Use "Threads" in favor of "Comments" by default
 - Separate draft merge requests into their own tab
+- Contributors sidebar: authors and reviewers of the listed MRs, busiest first, with a status breakdown per person. Click someone to filter the list. "Reviewed" and "Not reviewed" buttons show and filter the open MRs you approved, or the ones of others you have not approved yet
 - Draft merge requests are visually dimmed, making them stand out less and helping you focus on ready-to-review items.
 - Render project logos in group overviews
 - Show unresolved threads in the overview & detail
