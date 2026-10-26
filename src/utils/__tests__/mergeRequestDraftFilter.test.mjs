@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeRequestDraftFilterUrl } from '../mergeRequestDraftFilter.js';
+import {
+    mergeRequestDraftFilterUrl,
+    mergeRequestStateUrl,
+} from '../mergeRequestDraftFilter.js';
 
 test('builds ready and draft merge request URLs without pagination', () => {
     const currentUrl = 'https://gitlab.example/group/project/-/merge_requests?assignee_username=me&page=3';
@@ -12,5 +15,14 @@ test('builds ready and draft merge request URLs without pagination', () => {
     assert.equal(
         mergeRequestDraftFilterUrl(currentUrl, true),
         'https://gitlab.example/group/project/-/merge_requests?assignee_username=me&state=opened&draft=yes',
+    );
+});
+
+test('drops the draft filter for other states', () => {
+    const currentUrl = 'https://gitlab.example/group/project/-/merge_requests?assignee_username=me&state=opened&draft=yes&page=3';
+
+    assert.equal(
+        mergeRequestStateUrl(currentUrl, 'closed'),
+        'https://gitlab.example/group/project/-/merge_requests?assignee_username=me&state=closed',
     );
 });

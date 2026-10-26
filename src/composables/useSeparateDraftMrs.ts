@@ -7,9 +7,108 @@ import {
 } from '../enums';
 import { useExtensionStore } from '../store';
 import { usePageDetectionStore } from '../stores';
-import { mergeRequestDraftFilterUrl } from '../utils/mergeRequestDraftFilter';
+import {
+    mergeRequestDraftFilterUrl,
+    mergeRequestStateUrl,
+} from '../utils/mergeRequestDraftFilter';
+import {
+    fetchMergeRequestCounts,
+    type MergeRequestStateCounts,
+    navigateMergeRequestList,
+} from '../utils/mergeRequestListApp';
 
 const DRAFT_TAB_ID = 'glab-enhancer-drafts-tab';
+const OTHER_STATES = ['merged', 'closed', 'all'];
+
+interface TabCounts {
+    withoutDrafts: MergeRequestStateCounts;
+    drafts: MergeRequestStateCounts;
+    everything: MergeRequestStateCounts;
+}
+
+let tabCounts: TabCounts | null = null;
+let tabCountsKey = '';
+let countsObserver: MutationObserver | null = null;
+let observedTabs: Element | null = null;
+
+function isPlainClick(event: MouseEvent) {
+    return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+}
+
+function formatCount(count: number) {
+    return count > 999 ? '999+' : String(count);
+}
+
+function setCount(link: Element | null | undefined, count: number | undefined) {
+    const badge = link?.querySelector('.gl-tab-counter-badge') as HTMLElement | null;
+    const content = badge?.querySelector('.gl-badge-content') || badge;
+    if (!badge || !content) {
+        return;
+    }
+
+    badge.style.display = count === undefined ? 'none' : '';
+
+    const text = count === undefined ? '' : formatCount(count);
+    if (content.textContent?.trim() !== text) {
+        content.textContent = text;
+    }
+}
+
+/**
+ * GitLab counts every tab with the current draft filter. Show the open tab without drafts,
+ * the drafts tab with only drafts, and the other states with both.
+ */
+function applyCounts(stateTabs: Element) {
+    const linkFor = (testId: string) => stateTabs.querySelector(`[data-testid="${testId}"]`)?.closest('a');
+
+    setCount(linkFor('drafts-issuables-tab'), tabCounts?.drafts.opened);
+
+    if (!tabCounts) {
+        return;
+    }
+
+    setCount(linkFor('opened-issuables-tab'), tabCounts.withoutDrafts.opened);
+    OTHER_STATES.forEach(state => setCount(linkFor(`${state}-issuables-tab`), tabCounts!.everything[state as keyof MergeRequestStateCounts]));
+}
+
+function renderCounts(stateTabs: Element) {
+    applyCounts(stateTabs);
+
+    // Put the counts back right away when GitLab renders its own
+    if (observedTabs !== stateTabs) {
+        countsObserver?.disconnect();
+        countsObserver = new MutationObserver(() => applyCounts(stateTabs));
+        observedTabs = stateTabs;
+        countsObserver.observe(stateTabs, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+        });
+    }
+
+    const countsQuery = fetchMergeRequestCounts();
+    if (!countsQuery || countsQuery.filterKey === tabCountsKey) {
+        return;
+    }
+
+    tabCountsKey = countsQuery.filterKey;
+    countsQuery.load()
+        .then(([withoutDrafts, drafts, everything]) => {
+            if (countsQuery.filterKey !== tabCountsKey) {
+                return;
+            }
+
+            tabCounts = {
+                withoutDrafts,
+                drafts,
+                everything,
+            };
+            applyCounts(stateTabs);
+        })
+        .catch(() => {
+            tabCountsKey = '';
+        });
+}
 
 function setActive(tab: HTMLElement, active: boolean) {
     tab.classList.toggle('active', active);
@@ -22,11 +121,7 @@ function setActive(tab: HTMLElement, active: boolean) {
 }
 
 function navigate(draft: boolean, replace = false) {
-    const url = mergeRequestDraftFilterUrl(window.location.href, draft);
-    history[replace ? 'replaceState' : 'pushState'](history.state, '', url);
-    window.dispatchEvent(new PopStateEvent('popstate', {
-        state: history.state,
-    }));
+    navigateMergeRequestList(mergeRequestDraftFilterUrl(window.location.href, draft), replace);
 }
 
 export function useSeparateDraftMrs() {
@@ -61,7 +156,7 @@ export function useSeparateDraftMrs() {
         if (!openedLink.dataset.glabEnhancerDraftFilter) {
             openedLink.dataset.glabEnhancerDraftFilter = 'true';
             openedLink.addEventListener('click', (event) => {
-                if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+                if (!isPlainClick(event)) {
                     return;
                 }
 
@@ -80,7 +175,6 @@ export function useSeparateDraftMrs() {
         if (!draftTab) {
             draftTab = openedTab.cloneNode(true) as HTMLElement;
             draftTab.id = DRAFT_TAB_ID;
-            draftTab.querySelector('.gl-tab-counter-badge, .badge')?.remove();
             draftTab.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
 
             const title = draftTab.querySelector('[data-testid="opened-issuables-tab"]') ||
@@ -107,7 +201,7 @@ export function useSeparateDraftMrs() {
         if (!draftLink.dataset.glabEnhancerDraftTab) {
             draftLink.dataset.glabEnhancerDraftTab = 'true';
             draftLink.addEventListener('click', (event) => {
-                if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+                if (!isPlainClick(event)) {
                     return;
                 }
 
@@ -117,6 +211,27 @@ export function useSeparateDraftMrs() {
                 navigate(true);
             });
         }
+
+        OTHER_STATES.forEach((state) => {
+            const link = stateTabs.querySelector(`[data-testid="${state}-issuables-tab"]`)?.closest('a');
+            if (!link || link.dataset.glabEnhancerStateTab) {
+                return;
+            }
+
+            link.dataset.glabEnhancerStateTab = 'true';
+            link.addEventListener('click', (event) => {
+                if (!isPlainClick(event)) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                setActive(draftTab, false);
+                navigateMergeRequestList(mergeRequestStateUrl(window.location.href, state));
+            }, true);
+        });
+
+        renderCounts(stateTabs);
 
         const tabLinks = stateTabs.querySelectorAll('ul[role="tablist"] > li > a[role="tab"]');
         tabLinks.forEach((link, index) => {
