@@ -83,37 +83,6 @@ export function usePersistentFilters() {
         return sortedParams.toString();
     }
 
-    function applyPersistentFilterOnLoad() {
-        const pathname = getCurrentPathname();
-        if (!pathname) {
-            return false;
-        }
-
-        const removeSearchKeys = [
-            'first_page_size',
-            'page_after',
-            'page',
-        ];
-        if (isDashboardIssues.value) {
-            removeSearchKeys.push('assignee_username', 'assignee_username[]', 'sort', 'state');
-        }
-        if (isDashboardMergeRequests.value) {
-            removeSearchKeys.push('assignee_username', 'reviewer_username');
-        }
-
-        const search = persistentFilters.value.get(pathname) || '';
-        const cachedSearch = sortQueryParams(search, removeSearchKeys);
-
-        const currentSearch = sortQueryParams(location.value.search as string, removeSearchKeys);
-
-        if (currentSearch || !cachedSearch || cachedSearch === currentSearch) {
-            return false;
-        }
-
-        window.location.href = pathname + search;
-        return true;
-    }
-
     function applyPersistentFiltersOnNavSidebar() {
         persistentFilters.value.forEach((search, href) => {
             if (!isValidPath(href)) {
@@ -162,11 +131,8 @@ export function usePersistentFilters() {
         }
     }
 
+    // content.js restores the saved filters before the page loads
     onBeforeMount(() => {
-        if (applyPersistentFilterOnLoad()) {
-            return;
-        }
-
         applyPersistentFiltersOnNavSidebar();
         savePersistentFilters();
 

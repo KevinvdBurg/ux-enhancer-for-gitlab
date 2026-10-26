@@ -73,5 +73,6 @@ export function useHighlightMyIssuesMrs() {
 
     return {
         highlight: debounce(highlight, 500),
+        highlightNow: highlight,
     };
 }

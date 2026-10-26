@@ -109,6 +109,7 @@
         isBoardPage,
         isTodoPage,
         isGroupPage,
+        isDetailPage,
         pageType,
     } = storeToRefs(pageDetectionStore);
 
@@ -116,11 +117,24 @@
     const effectiveProjectPath = computed(() => panelContext.value?.projectPath ?? (!isGroupPage.value ? projectPath.value : ''));
 
     usePersistentFilters();
-    const { render: renderProjectAvatars } = useRenderProjectAvatarIssues();
+    const {
+        render: renderProjectAvatars,
+        renderNow: renderProjectAvatarsNow,
+    } = useRenderProjectAvatarIssues();
     const { rename: renameProjectIssueBoards } = useRenameProjectInIssueBoards();
-    const { highlight: highlightMyIssuesMrs } = useHighlightMyIssuesMrs();
-    const { dim: dimDraftMrs } = useDimDraftMrs();
-    const { render: renderDraftMrsTab } = useSeparateDraftMrs();
+    const {
+        highlight: highlightMyIssuesMrs,
+        highlightNow: highlightMyIssuesMrsNow,
+    } = useHighlightMyIssuesMrs();
+    const {
+        dim: dimDraftMrs,
+        dimNow: dimDraftMrsNow,
+    } = useDimDraftMrs();
+    const { highlight: highlightMyApprovals } = useHighlightMyApprovals();
+    const {
+        render: renderDraftMrsTab,
+        renderNow: renderDraftMrsTabNow,
+    } = useSeparateDraftMrs();
     const { render: renderEpicAssignees } = useShowEpicAssignees();
 
     const csrfToken = ref('');
@@ -157,10 +171,52 @@
                 renderDraftMrsTab();
                 renderEpicAssignees();
 
-                useHighlightMyApprovals(gitlabUserId.value);
+                highlightMyApprovals(gitlabUserId.value);
 
                 checkIsMrIssueOverviewReady();
             }
         });
+
+        watchPageContent();
     });
+
+    /**
+     * Decorates lists before the browser paints what GitLab rendered, instead of after its requests
+     * completed, so nothing pops in afterwards. Every step skips what it already did.
+     */
+    function watchPageContent() {
+        let isQueued = false;
+
+        const decorate = () => {
+            // Detail pages change constantly and have no lists to decorate
+            if (isDetailPage.value) {
+                return;
+            }
+
+            renderProjectAvatarsNow();
+            highlightMyIssuesMrsNow(gitlabUsername.value);
+            dimDraftMrsNow();
+            renderDraftMrsTabNow();
+            highlightMyApprovals(gitlabUserId.value);
+            checkIsMrIssueOverviewReady();
+            emit(MittEventKey.PAGE_CONTENT_CHANGED);
+        };
+
+        new MutationObserver(() => {
+            if (isQueued) {
+                return;
+            }
+
+            isQueued = true;
+            queueMicrotask(() => {
+                isQueued = false;
+                decorate();
+            });
+        }).observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+
+        decorate();
+    }
 </script>

@@ -170,5 +170,6 @@ export function useRenderProjectAvatarIssues() {
 
     return {
         render: debounce(injectAvatars, 500),
+        renderNow: injectAvatars,
     };
 }

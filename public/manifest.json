@@ -31,7 +31,8 @@
       ],
       "matches": [
         "https://gitlab.com/*"
-      ]
+      ],
+      "run_at": "document_start"
     }
   ],
   "background": {

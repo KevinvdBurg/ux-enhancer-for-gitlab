@@ -26,8 +26,31 @@ interface TabCounts {
     everything: MergeRequestStateCounts;
 }
 
+const TAB_COUNTS_STORAGE_KEY = 'glab-enhancer-browser-extension/tab-counts';
+const MAX_STORED_TAB_COUNTS = 50;
+
 let tabCounts: TabCounts | null = null;
 let tabCountsKey = '';
+
+// Counts per filter from earlier visits, so the tabs show them before the fresh counts arrive
+function readStoredTabCounts(): Record<string, TabCounts> {
+    try {
+        return JSON.parse(localStorage.getItem(TAB_COUNTS_STORAGE_KEY) || '{}');
+    } catch {
+        return {};
+    }
+}
+
+function storeTabCounts(filterKey: string, counts: TabCounts) {
+    const stored = readStoredTabCounts();
+    delete stored[filterKey];
+    stored[filterKey] = counts;
+
+    const keys = Object.keys(stored);
+    keys.slice(0, Math.max(0, keys.length - MAX_STORED_TAB_COUNTS)).forEach(key => delete stored[key]);
+
+    localStorage.setItem(TAB_COUNTS_STORAGE_KEY, JSON.stringify(stored));
+}
 let countsObserver: MutationObserver | null = null;
 let observedTabs: Element | null = null;
 
@@ -60,8 +83,15 @@ function setCount(link: Element | null | undefined, count: number | undefined) {
  */
 function applyCounts(stateTabs: Element) {
     const linkFor = (testId: string) => stateTabs.querySelector(`[data-testid="${testId}"]`)?.closest('a');
+    const draftLink = linkFor('drafts-issuables-tab');
 
-    setCount(linkFor('drafts-issuables-tab'), tabCounts?.drafts.opened);
+    // The drafts tab can be added before GitLab gives the open tab its badge, so copy it once it exists
+    const openBadge = linkFor('opened-issuables-tab')?.querySelector('.gl-tab-counter-badge');
+    if (draftLink && openBadge && !draftLink.querySelector('.gl-tab-counter-badge')) {
+        draftLink.appendChild(openBadge.cloneNode(true));
+    }
+
+    setCount(draftLink, tabCounts?.drafts.opened);
 
     if (!tabCounts) {
         return;
@@ -92,6 +122,9 @@ function renderCounts(stateTabs: Element) {
     }
 
     tabCountsKey = countsQuery.filterKey;
+    tabCounts = readStoredTabCounts()[countsQuery.filterKey] || null;
+    applyCounts(stateTabs);
+
     countsQuery.load()
         .then(([withoutDrafts, drafts, everything]) => {
             if (countsQuery.filterKey !== tabCountsKey) {
@@ -103,6 +136,7 @@ function renderCounts(stateTabs: Element) {
                 drafts,
                 everything,
             };
+            storeTabCounts(countsQuery.filterKey, tabCounts);
             applyCounts(stateTabs);
         })
         .catch(() => {
@@ -128,17 +162,16 @@ export function useSeparateDraftMrs() {
     const { getSetting } = useExtensionStore();
     const { pageType } = storeToRefs(usePageDetectionStore());
 
-    function render() {
-        const isMergeRequestList = [
+    function isEnabled() {
+        return getSetting(Preference.MR_SEPARATE_DRAFTS, false) && [
             PageType.DASHBOARD_MERGE_REQUESTS,
             PageType.GROUP_MERGE_REQUESTS,
             PageType.PROJECT_MERGE_REQUESTS,
         ].includes(pageType.value);
+    }
 
-        if (
-            !getSetting(Preference.MR_SEPARATE_DRAFTS, false) ||
-            !isMergeRequestList
-        ) {
+    function render() {
+        if (!isEnabled()) {
             return;
         }
 
@@ -256,9 +289,30 @@ export function useSeparateDraftMrs() {
         }
     }
 
-    onMounted(render);
+    // GitLab renders the tabs after the app starts, so add the drafts tab in the same frame they appear
+    function watchForTabs() {
+        let frame = 0;
+
+        new MutationObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                if (isEnabled() && document.querySelector('.issuable-state-filters') && !document.getElementById(DRAFT_TAB_ID)) {
+                    render();
+                }
+            });
+        }).observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    onMounted(() => {
+        render();
+        watchForTabs();
+    });
 
     return {
         render: debounce(render, 300),
+        renderNow: render,
     };
 }

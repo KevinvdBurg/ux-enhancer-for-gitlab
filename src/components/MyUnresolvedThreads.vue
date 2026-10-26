@@ -83,6 +83,7 @@
         mdiCommentAlertOutline,
         mdiCommentTextMultipleOutline,
     } from '@mdi/js';
+    import { useLocalStorage } from '@vueuse/core';
     import { debounce } from 'lodash-es';
     import {
         computed,
@@ -95,6 +96,7 @@
     } from 'vue';
     import { useFetchPaging } from '../composables/useFetchPaging';
     import { useMitt } from '../composables/useMitt';
+    import { APP_NAMESPACE } from '../constants';
     import {
         MittEventKey,
         Preference,
@@ -149,66 +151,72 @@
         return acc;
     }, {} as Record<string, HTMLElement | null>));
 
-    const unresolvedThreadsCount = computed(() => {
-        const items: Map<any, any> = new Map();
+    interface ThreadCounts {
+        unresolved: number;
+        mine: number;
+        mineWithResponses: number;
+    }
+
+    // Last known counts per merge request, so badges show right away on the next visit
+    const cachedCounts: Ref<Map<string, ThreadCounts>> = useLocalStorage(`${APP_NAMESPACE}/unresolved-threads`, ref(new Map()));
+    const MAX_CACHED_COUNTS = 500;
+    const pendingIds = new Set<string>();
+
+    function cacheKey(iid: IID) {
+        return `${getProjectPath(iid)}!${getIid(iid)}`;
+    }
+
+    function countThreads(items: GitLabDiscussion[]): ThreadCounts {
+        const counts = {
+            unresolved: 0,
+            mine: 0,
+            mineWithResponses: 0,
+        };
+
+        items.forEach((discussion) => {
+            const firstNote = discussion?.notes?.[0] || null;
+            if (!firstNote?.resolvable || firstNote?.resolved) {
+                return;
+            }
+
+            counts.unresolved++;
+
+            if (firstNote?.author?.id !== gitlabUserId) {
+                return;
+            }
+
+            counts.mine++;
+
+            const notes = (discussion?.notes || []).filter(note => !note.system);
+            const lastNote = notes[notes.length - 1] || null;
+            if (lastNote && lastNote.author.id !== gitlabUserId) {
+                counts.mineWithResponses++;
+            }
+        });
+
+        return counts;
+    }
+
+    const threadCounts = computed(() => {
+        const items: Map<string, ThreadCounts | undefined> = new Map();
 
         extractIssuableIds.value.forEach((iid) => {
-            const id = getIid(iid);
-            const totalUnresolvedThreads = (discussions.value.get(id) || []).filter((discussion) => {
-                const firstNote = discussion?.notes?.[0] || null;
-                return !!firstNote?.resolvable && !firstNote?.resolved;
-            });
-
-            items.set(getTeleportId(iid), totalUnresolvedThreads.length);
+            const loaded = discussions.value.get(getIid(iid));
+            items.set(getTeleportId(iid), loaded ? countThreads(loaded) : cachedCounts.value.get(cacheKey(iid)));
         });
 
         return items;
     });
 
-    const myUnresolvedThreadsCount = computed(() => {
-        const items: Map<any, any> = new Map();
-
-        extractIssuableIds.value.forEach((iid) => {
-            const id = getIid(iid);
-            const totalUnresolvedThreads = (discussions.value.get(id) || []).filter((discussion) => {
-                const firstNote = discussion?.notes?.[0] || null;
-                return !!firstNote?.resolvable && !firstNote?.resolved && firstNote?.author?.id === gitlabUserId;
-            });
-
-            items.set(getTeleportId(iid), totalUnresolvedThreads.length);
-        });
-
-        return items;
-    });
-
-    const myUnresolvedThreadsWithResponseCount = computed(() => {
-        const items: Map<any, any> = new Map();
-
-        extractIssuableIds.value.forEach((iid) => {
-            const id = getIid(iid);
-            const totalUnresolvedThreads = (discussions.value.get(id) || []).filter((discussion) => {
-                const notes = (discussion?.notes || []).filter((note) => !note.system);
-
-                const firstNote = notes?.[0] || null;
-                const lastNote = notes?.[notes.length - 1] || null;
-
-                const isMyThread = !!firstNote?.resolvable && !firstNote?.resolved && firstNote?.author?.id === gitlabUserId;
-                const hasResponse = lastNote && !lastNote.system && lastNote.author.id !== gitlabUserId;
-
-                return isMyThread && hasResponse;
-            });
-
-            items.set(getTeleportId(iid), totalUnresolvedThreads.length);
-        });
-
-        return items;
-    });
+    const unresolvedThreadsCount = computed(() => new Map([...threadCounts.value].map(([id, counts]) => [id, counts?.unresolved || 0])));
+    const myUnresolvedThreadsCount = computed(() => new Map([...threadCounts.value].map(([id, counts]) => [id, counts?.mine || 0])));
+    const myUnresolvedThreadsWithResponseCount = computed(() => new Map([...threadCounts.value].map(([id, counts]) => [id, counts?.mineWithResponses || 0])));
 
     function fetchDiscussions(isForced: boolean = false) {
         extractIssuableIds.value.forEach((iid) => {
             const path = getProjectPath(iid);
             const id = getIid(iid);
-            if (!id) {
+            if (!id || pendingIds.has(id)) {
                 return;
             }
 
@@ -216,13 +224,22 @@
                 return;
             }
 
+            pendingIds.add(id);
             const endpoint = `/api/v4/projects/${encodeURIComponent(path)}/${isMergeRequest ? 'merge_requests' : 'issues'}/${id}/discussions`;
             useFetchPaging(endpoint)
                 .then(({ data }) => {
                     if (data?.value) {
                         discussions.value.set(id, data?.value || [] as GitLabDiscussion[]);
+
+                        const key = cacheKey(iid);
+                        cachedCounts.value.delete(key);
+                        cachedCounts.value.set(key, countThreads(data.value));
+                        if (cachedCounts.value.size > MAX_CACHED_COUNTS) {
+                            cachedCounts.value.delete(cachedCounts.value.keys().next().value!);
+                        }
                     }
-                });
+                })
+                .finally(() => pendingIds.delete(id));
         });
     }
 
@@ -280,10 +297,15 @@
         }
     }
 
+    function onPageContentChanged() {
+        extractIssuableIids();
+    }
+
     function onBrowserRequestCompleted(data?: Record<string, any> | string | number) {
         debouncedExtractIssuableIids();
 
-        if (typeof data === 'object' && data !== null && data['method'] !== 'GET') {
+        // GraphQL reads are POST requests too, so only other requests can mean threads changed
+        if (typeof data === 'object' && data !== null && data['method'] !== 'GET' && !String(data['url']).includes('/api/graphql')) {
             debouncedForceFetchDiscussions();
         }
     }
@@ -298,11 +320,13 @@
         }
 
         on(MittEventKey.BROWSER_REQUEST_COMPLETED, onBrowserRequestCompleted);
-        debouncedExtractIssuableIids();
+        on(MittEventKey.PAGE_CONTENT_CHANGED, onPageContentChanged);
+        extractIssuableIids();
     });
 
     onBeforeUnmount(() => {
         off(MittEventKey.BROWSER_REQUEST_COMPLETED, onBrowserRequestCompleted);
+        off(MittEventKey.PAGE_CONTENT_CHANGED, onPageContentChanged);
         document.removeEventListener('click', onClickHandler);
     });
 </script>

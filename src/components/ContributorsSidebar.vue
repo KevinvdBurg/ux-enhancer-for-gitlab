@@ -219,7 +219,10 @@
         mdiClose,
         mdiRefresh,
     } from '@mdi/js';
-    import { useEventListener } from '@vueuse/core';
+    import {
+        useEventListener,
+        useMutationObserver,
+    } from '@vueuse/core';
     import { debounce } from 'lodash-es';
     import { storeToRefs } from 'pinia';
     import {
@@ -590,8 +593,12 @@
     onMounted(() => {
         load();
         updateLayout();
-        // The list renders after the page shell, so measure again once it settled
-        setTimeout(updateLayout, 1000);
+    });
+
+    // The list renders after the app starts and can shift while it loads, so measure again on changes
+    useMutationObserver(document.body, scheduleLayout, {
+        childList: true,
+        subtree: true,
     });
 
     onBeforeUnmount(() => reserveSpace(null, 0));

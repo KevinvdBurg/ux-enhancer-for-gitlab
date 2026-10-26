@@ -18,10 +18,19 @@ import { APP_NAMESPACE } from './constants';
 
 type SettingValue = boolean | string | number | null;
 
+// GitLab renders these into every page, which saves two API calls before the app can start
+const gon = (window as Window & {
+    gon?: {
+        current_user_id?: number;
+        current_username?: string;
+        version?: string;
+    };
+}).gon;
+
 export const useExtensionStore = defineStore(`${APP_NAMESPACE}/app`, () => {
-        const gitlabUserId: Ref<number> = ref<number>(0);
-        const gitlabUsername: Ref<string> = ref<string>('');
-        const gitlabVersion: Ref<string | null> = ref<string | null>(null);
+        const gitlabUserId: Ref<number> = ref<number>(gon?.current_user_id || 0);
+        const gitlabUsername: Ref<string> = ref<string>(gon?.current_username || '');
+        const gitlabVersion: Ref<string | null> = ref<string | null>(gon?.version || null);
 
         const isReady = computed(() => !!gitlabUserId.value && !!gitlabVersion.value);
 
@@ -108,21 +117,27 @@ export const useExtensionStore = defineStore(`${APP_NAMESPACE}/app`, () => {
 
 
         const projectsCache: Ref<Map<string, IProject>> = useLocalStorage(`${APP_NAMESPACE}/projects`, ref(new Map()));
+        const pendingProjects = new Map<string, Promise<IProject | null>>();
 
         async function getProject(projectPath: string) {
             if (projectsCache.value.has(projectPath)) {
                 return projectsCache.value.get(projectPath)!;
             }
 
-            const { data } = await fetchProject(projectPath);
+            // Share the request when several renders ask for the same project before it arrived
+            if (!pendingProjects.has(projectPath)) {
+                pendingProjects.set(projectPath, fetchProject(projectPath)
+                    .then(({ data }) => {
+                        if (data.value) {
+                            projectsCache.value.set(projectPath, data.value);
+                        }
 
-            if (!data.value) {
-                return null;
+                        return data.value;
+                    })
+                    .finally(() => pendingProjects.delete(projectPath)));
             }
 
-            projectsCache.value.set(projectPath, data.value);
-
-            return data.value;
+            return pendingProjects.get(projectPath)!;
         }
 
         function clearCache() {
@@ -143,8 +158,13 @@ export const useExtensionStore = defineStore(`${APP_NAMESPACE}/app`, () => {
         }
 
         onMounted(() => {
-            loadCurrentUser();
-            loadGitLabVersion();
+            if (!gitlabUserId.value || !gitlabUsername.value) {
+                loadCurrentUser();
+            }
+
+            if (!gitlabVersion.value) {
+                loadGitLabVersion();
+            }
         });
 
         return {

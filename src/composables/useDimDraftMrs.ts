@@ -23,5 +23,6 @@ export function useDimDraftMrs() {
 
     return {
         dim: debounce(dim, 300),
+        dimNow: dim,
     };
 }

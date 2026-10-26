@@ -73,4 +73,5 @@ export const enum BrowserMessageType {
 export const enum MittEventKey {
     GRAPHQL_REQUEST_COMPLETED = 'graphql-request-completed',
     BROWSER_REQUEST_COMPLETED = 'browser-request-completed',
+    PAGE_CONTENT_CHANGED = 'page-content-changed',
 }
