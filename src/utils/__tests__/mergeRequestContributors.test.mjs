@@ -6,7 +6,9 @@ import {
     contributorApiParams,
     contributorCategory,
     contributorFilterUrl,
+    daysSince,
     excludedApprovers,
+    formatIdle,
     reviewedByMeFilter,
     reviewedByMeUrl,
     summarizeContributors,
@@ -52,8 +54,8 @@ test('explains why a merge request is blocked', () => {
 test('lists the blocked merge requests per contributor', () => {
     const kevin = { id: 1, name: 'Kevin' };
     const [summary] = summarizeContributors([
-        { id: 10, iid: 6218, title: 'Add skill', web_url: 'https://gitlab.example/mr/6218', references: { relative: '!6218' }, author: kevin, state: 'opened', detailed_merge_status: 'discussions_not_resolved', blocking_discussions_resolved: false, created_at: '2026-10-20T00:00:00Z' },
-        { id: 11, iid: 6219, author: kevin, state: 'opened', detailed_merge_status: 'mergeable', created_at: '2026-10-21T00:00:00Z' },
+        { id: 10, iid: 6218, title: 'Add skill', web_url: 'https://gitlab.example/mr/6218', references: { relative: '!6218' }, author: kevin, state: 'opened', detailed_merge_status: 'discussions_not_resolved', blocking_discussions_resolved: false, updated_at: '2026-10-20T00:00:00Z' },
+        { id: 11, iid: 6219, author: kevin, state: 'opened', detailed_merge_status: 'mergeable', updated_at: '2026-10-21T00:00:00Z' },
     ], 'authors');
 
     assert.deepEqual(summary.blocked, [{ id: 10, reference: '!6218', title: 'Add skill', webUrl: 'https://gitlab.example/mr/6218', reasons: ['Unresolved threads'] }]);
@@ -64,19 +66,26 @@ test('summarizes authors and reviewers, busiest first', () => {
     const tom = { id: 2, name: 'Tom' };
     const stefani = { id: 3, name: 'Stefani' };
     const mergeRequests = [
-        { author: kevin, reviewers: [tom], state: 'opened', detailed_merge_status: 'mergeable', created_at: '2026-10-20T00:00:00Z' },
-        { author: stefani, reviewers: [tom, kevin], state: 'opened', detailed_merge_status: 'not_approved', created_at: '2026-10-21T00:00:00Z' },
-        { author: stefani, reviewers: [], state: 'opened', draft: true, created_at: '2026-10-19T00:00:00Z' },
+        { iid: 1, title: 'One', author: kevin, reviewers: [tom], state: 'opened', detailed_merge_status: 'mergeable', updated_at: '2026-10-20T00:00:00Z' },
+        { iid: 2, title: 'Two', author: stefani, reviewers: [tom, kevin], state: 'opened', detailed_merge_status: 'not_approved', updated_at: '2026-10-21T00:00:00Z' },
+        { iid: 3, title: 'Three', author: stefani, reviewers: [], state: 'opened', draft: true, updated_at: '2026-10-19T00:00:00Z' },
     ];
 
     const authors = summarizeContributors(mergeRequests, 'authors');
     assert.deepEqual(authors.map(summary => [summary.user.name, summary.total]), [['Stefani', 2], ['Kevin', 1]]);
     assert.equal(authors[0].counts.draft, 1);
     assert.equal(authors[0].counts.review, 1);
-    assert.equal(authors[0].oldestCreatedAt, '2026-10-19T00:00:00Z');
+    assert.deepEqual(authors[0].idlest, { reference: '!3', title: 'Three', updatedAt: '2026-10-19T00:00:00Z' });
 
     const reviewers = summarizeContributors(mergeRequests, 'reviewers');
     assert.deepEqual(reviewers.map(summary => [summary.user.name, summary.total]), [['Tom', 2], ['Kevin', 1]]);
+});
+
+test('describes how long a merge request has been idle', () => {
+    assert.equal(daysSince('2026-10-20T10:00:00Z', Date.parse('2026-10-26T09:00:00Z')), 5);
+    assert.equal(formatIdle(1), '1 day idle');
+    assert.equal(formatIdle(20), '20 days idle');
+    assert.equal(formatIdle(75), '2 months idle');
 });
 
 test('toggles the contributor filter and drops pagination', () => {

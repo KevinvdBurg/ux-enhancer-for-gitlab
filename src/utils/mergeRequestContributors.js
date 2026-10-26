@@ -232,7 +232,7 @@ export function blockedReasons(mergeRequest) {
  * @param {ContributorMode} mode
  */
 export function summarizeContributors(mergeRequests, mode) {
-    /** @type {Map<number, { user: Record<string, any>, total: number, counts: Record<ContributorCategory, number>, oldestCreatedAt: string | null, blocked: Array<{ id: number, reference: string, title: string, webUrl: string, reasons: string[] }> }>} */
+    /** @type {Map<number, { user: Record<string, any>, total: number, counts: Record<ContributorCategory, number>, idlest: { reference: string, title: string, updatedAt: string } | null, blocked: Array<{ id: number, reference: string, title: string, webUrl: string, reasons: string[] }> }>} */
     const summaries = new Map();
 
     mergeRequests.forEach((mergeRequest) => {
@@ -246,7 +246,7 @@ export function summarizeContributors(mergeRequests, mode) {
                     user,
                     total: 0,
                     counts: Object.fromEntries(CONTRIBUTOR_CATEGORIES.map(key => [key, 0])),
-                    oldestCreatedAt: null,
+                    idlest: null,
                     blocked: [],
                 };
                 summaries.set(user.id, summary);
@@ -265,13 +265,38 @@ export function summarizeContributors(mergeRequests, mode) {
                 });
             }
 
-            if (!summary.oldestCreatedAt || mergeRequest.created_at < summary.oldestCreatedAt) {
-                summary.oldestCreatedAt = mergeRequest.created_at;
+            if (!summary.idlest || mergeRequest.updated_at < summary.idlest.updatedAt) {
+                summary.idlest = {
+                    reference: mergeRequest.references?.relative || `!${mergeRequest.iid}`,
+                    title: mergeRequest.title,
+                    updatedAt: mergeRequest.updated_at,
+                };
             }
         });
     });
 
     return [...summaries.values()].sort((a, b) => b.total - a.total || a.user.name.localeCompare(b.user.name));
+}
+
+/**
+ * @param {string} date
+ * @param {number} [now]
+ * @returns {number} Whole days since the date
+ */
+export function daysSince(date, now = Date.now()) {
+    return Math.floor((now - Date.parse(date)) / 86_400_000);
+}
+
+/**
+ * @param {number} days
+ * @returns {string}
+ */
+export function formatIdle(days) {
+    if (days >= 60) {
+        return `${Math.floor(days / 30)} months idle`;
+    }
+
+    return `${days} ${days === 1 ? 'day' : 'days'} idle`;
 }
 
 /**

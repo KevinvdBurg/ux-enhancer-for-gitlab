@@ -188,11 +188,15 @@
                             </span>
 
                             <span
-                                v-if="isOpenState && summary.oldestCreatedAt"
-                                class="gl-ml-auto"
-                                title="Age of oldest merge request"
+                                v-if="isOpenState && summary.idlest && daysSince(summary.idlest.updatedAt) >= 1"
+                                :class="{
+                                    'contributors-sidebar__idle--long': daysSince(summary.idlest.updatedAt) >= LONG_IDLE_DAYS,
+                                }"
+                                class="contributors-sidebar__idle"
+                                :title="`${summary.idlest.reference} ${summary.idlest.title} has had no activity for ${formatIdle(daysSince(summary.idlest.updatedAt)).replace(' idle', '')}`"
                             >
-                                oldest {{ formatAge(summary.oldestCreatedAt) }}
+                                <SvgIcon :path="mdiClockOutline" />
+                                {{ formatIdle(daysSince(summary.idlest.updatedAt)) }}
                             </span>
                         </span>
                     </span>
@@ -261,6 +265,7 @@
         mdiAccountGroupOutline,
         mdiChevronDown,
         mdiChevronRight,
+        mdiClockOutline,
         mdiClose,
         mdiRefresh,
     } from '@mdi/js';
@@ -293,7 +298,9 @@
         CONTRIBUTOR_CATEGORIES,
         contributorApiParams,
         contributorFilterUrl,
+        daysSince,
         excludedApprovers,
+        formatIdle,
         reviewedByMeFilter,
         reviewedByMeUrl,
         summarizeContributors,
@@ -316,6 +323,8 @@
     } = defineProps<Props>();
 
     const MAX_PAGES = 5;
+    // From this many days without activity, the idle time stands out
+    const LONG_IDLE_DAYS = 7;
     const PANEL_WIDTH = 300;
     const MIN_DOCKED_WIDTH = 220;
     const COLLAPSED_WIDTH = 72;
@@ -561,11 +570,6 @@
         expandedBlocked.value = expanded;
     }
 
-    function formatAge(createdAt: string) {
-        const days = Math.floor((Date.now() - Date.parse(createdAt)) / 86_400_000);
-        return days < 1 ? 'today' : `${days}d`;
-    }
-
     // --- Layout: dock right of the list, making room for it when the page has no empty space there ---
 
     const layout: Ref<{ style: Record<string, string> } | null> = ref(null);
@@ -731,7 +735,24 @@
             border-color: var(--gl-status-info-icon-color, #1f75cb);
             background: var(--gl-background-color-strong, #ececef);
 
-            .contributors-sidebar__count {
+            .contributors-sidebar__idle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        margin-left: auto;
+
+        svg {
+            width: 0.75rem;
+            height: 0.75rem;
+        }
+
+        &--long {
+            color: var(--gl-status-warning-icon-color, #c17d10);
+            font-weight: 600;
+        }
+    }
+
+    .contributors-sidebar__count {
                 background: var(--gl-background-color-default, #fff);
             }
         }

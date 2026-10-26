@@ -12,6 +12,7 @@ export interface IMergeRequestListItem {
     has_conflicts: boolean;
     blocking_discussions_resolved: boolean;
     created_at: string;
+    updated_at: string;
     author: GitlabUser;
     reviewers: GitlabUser[];
 }
