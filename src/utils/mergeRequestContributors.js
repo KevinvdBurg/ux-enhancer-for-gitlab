@@ -63,13 +63,13 @@ const BLOCKED_STATUSES = [
  * The filter for the given mode is left out, so every contributor stays visible.
  *
  * @param {string} href
- * @param {ContributorMode} mode
+ * @param {ContributorMode | null} [mode]
  * @returns {URLSearchParams}
  */
-export function contributorApiParams(href, mode) {
+export function contributorApiParams(href, mode = null) {
     const pageParams = new URL(href).searchParams;
     const apiParams = new URLSearchParams();
-    const ignoredKey = FILTER_KEY_BY_MODE[mode];
+    const ignoredKey = mode ? FILTER_KEY_BY_MODE[mode] : null;
 
     apiParams.set('state', pageParams.get('state') || 'opened');
 

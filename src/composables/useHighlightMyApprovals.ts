@@ -33,32 +33,35 @@ export function useHighlightMyApprovals() {
         }
     }
 
-    async function checkApproval(gitlabUserId: number, projectPath: string, iid: string) {
-        const key = `${projectPath}!${iid}`;
-        if (knownApprovals.value.has(key)) {
-            applyHighlight(projectPath, iid, knownApprovals.value.get(key)!);
-        }
-
-        if (checked.has(key)) {
-            return;
-        }
-
-        checked.add(key);
-
-        const { data } = await useFetch(`/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${iid}/approval_state?is_custom=1`).json();
-        if (!data.value?.rules) {
-            return;
-        }
-
-        const isApproved = data.value.rules.some((rule: { approved_by: Array<{ id: number }> }) => rule.approved_by.some(user => user.id === gitlabUserId));
-
+    function rememberApproval(key: string, isApproved: boolean) {
         knownApprovals.value.delete(key);
         knownApprovals.value.set(key, isApproved);
         if (knownApprovals.value.size > MAX_KNOWN_APPROVALS) {
             knownApprovals.value.delete(knownApprovals.value.keys().next().value!);
         }
+    }
 
-        applyHighlight(projectPath, iid, isApproved);
+    // One request per project tells which of the listed merge requests you approved
+    async function checkApprovals(gitlabUserId: number, projectPath: string, iids: string[]) {
+        const query = new URLSearchParams({
+            'is_custom': '1',
+            'per_page': '100',
+            'state': 'all',
+            'approved_by_ids[]': String(gitlabUserId),
+        });
+        iids.forEach(iid => query.append('iids[]', iid));
+
+        const { data } = await useFetch(`/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests?${query.toString()}`).json<Array<{ iid: number }>>();
+        if (!Array.isArray(data.value)) {
+            iids.forEach(iid => checked.delete(`${projectPath}!${iid}`));
+            return;
+        }
+
+        const approvedIids = new Set(data.value.map(mergeRequest => String(mergeRequest.iid)));
+        iids.forEach((iid) => {
+            rememberApproval(`${projectPath}!${iid}`, approvedIids.has(iid));
+            applyHighlight(projectPath, iid, approvedIids.has(iid));
+        });
     }
 
     function highlight(gitlabUserId: number) {
@@ -67,14 +70,32 @@ export function useHighlightMyApprovals() {
         }
 
         const currentProjectPath = extract()?.[0];
+        const uncheckedByProject = new Map<string, string[]>();
 
         document.querySelectorAll('.issuable-list > li .issuable-reference')
             .forEach((el) => {
-                const [projectPath, iid] = el.textContent?.trim()?.split('!') || [];
-                if (iid) {
-                    checkApproval(gitlabUserId, projectPath || currentProjectPath, iid);
+                const [path, iid] = el.textContent?.trim()?.split('!') || [];
+                const projectPath = path || currentProjectPath;
+                if (!iid || !projectPath) {
+                    return;
+                }
+
+                const key = `${projectPath}!${iid}`;
+                if (knownApprovals.value.has(key)) {
+                    applyHighlight(projectPath, iid, knownApprovals.value.get(key)!);
+                }
+
+                if (!checked.has(key)) {
+                    checked.add(key);
+                    uncheckedByProject.set(projectPath, [...(uncheckedByProject.get(projectPath) || []), iid]);
                 }
             });
+
+        uncheckedByProject.forEach((iids, projectPath) => {
+            for (let start = 0; start < iids.length; start += 100) {
+                checkApprovals(gitlabUserId, projectPath, iids.slice(start, start + 100));
+            }
+        });
     }
 
     return {

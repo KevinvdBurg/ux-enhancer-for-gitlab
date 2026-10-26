@@ -307,12 +307,12 @@
         {
             value: 'reviewed',
             label: 'Reviewed',
-            title: 'Open merge requests you have approved',
+            title: 'Open merge requests matching the other filters that you have approved',
         },
         {
             value: 'not_reviewed',
             label: 'Not reviewed',
-            title: 'Open merge requests of others that you have not approved',
+            title: 'Open merge requests of others matching the other filters that you have not approved',
         },
     ];
 
@@ -361,7 +361,12 @@
     const pageState = computed(() => new URL(href.value).searchParams.get('state') || 'opened');
     const isOpenState = computed(() => pageState.value === 'opened');
     const selectedUsername = computed(() => activeContributor(href.value, mode.value));
-    const draftFilter = computed(() => new URL(href.value).searchParams.get('draft'));
+    // The page's filters without the reviewed filter itself, so both buttons count what the list would show
+    const reviewedCountParams = computed(() => {
+        const params = contributorApiParams(reviewedByMeUrl(href.value, gitlabUsername.value, null));
+        params.set('state', 'opened');
+        return params.toString();
+    });
     const reviewedFilter = computed(() => gitlabUsername.value ? reviewedByMeFilter(href.value, gitlabUsername.value) : null);
 
     const visibleCategories = computed(() => {
@@ -444,6 +449,8 @@
         }
     }
 
+    let reviewedCountsRequestId = 0;
+
     async function loadReviewedByMeCount() {
         if (!gitlabUsername.value) {
             return;
@@ -451,40 +458,40 @@
 
         const endpoint = mergeRequestsEndpoint(currentProjectPath, isGroup);
         const username = gitlabUsername.value;
-        // Follow the page's draft filter, so the counts match the list after clicking
-        const base: Record<string, string> = draftFilter.value ? {
-            state: 'opened',
-            wip: draftFilter.value,
-        } : {
-            state: 'opened',
+        const currentRequestId = ++reviewedCountsRequestId;
+        const params = (extra: Record<string, string>) => {
+            const query = new URLSearchParams(reviewedCountParams.value);
+            Object.entries(extra).forEach(([key, value]) => query.set(key, value));
+            return query;
         };
 
         try {
             const [approved, othersOpen, othersApproved] = await Promise.all([
-                countMergeRequests(endpoint, new URLSearchParams({
-                    ...base,
+                countMergeRequests(endpoint, params({
                     'approved_by_usernames[]': username,
                 })),
-                countMergeRequests(endpoint, new URLSearchParams({
-                    ...base,
+                countMergeRequests(endpoint, params({
                     'not[author_username]': username,
                 })),
-                countMergeRequests(endpoint, new URLSearchParams({
-                    ...base,
+                countMergeRequests(endpoint, params({
                     'not[author_username]': username,
                     'approved_by_usernames[]': username,
                 })),
             ]);
 
-            reviewedCounts.value = {
-                reviewed: approved,
-                not_reviewed: othersOpen - othersApproved,
-            };
+            if (currentRequestId === reviewedCountsRequestId) {
+                reviewedCounts.value = {
+                    reviewed: approved,
+                    not_reviewed: othersOpen - othersApproved,
+                };
+            }
         } catch {
-            reviewedCounts.value = {
-                reviewed: null,
-                not_reviewed: null,
-            };
+            if (currentRequestId === reviewedCountsRequestId) {
+                reviewedCounts.value = {
+                    reviewed: null,
+                    not_reviewed: null,
+                };
+            }
         }
     }
 
@@ -585,7 +592,7 @@
 
     watch([
         gitlabUsername,
-        draftFilter,
+        reviewedCountParams,
     ], loadReviewedByMeCount, {
         immediate: true,
     });

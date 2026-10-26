@@ -28,13 +28,10 @@
                     </li>
 
                     <li
-                        :class="{
-                            'badge badge-pill gl-badge badge-danger':  myUnresolvedThreadsCount.get(teleportId),
-                        }"
-                        class="has-tooltip gl-display-none gl-sm-display-block md"
+                        v-if="myUnresolvedThreadsCount.get(teleportId)"
+                        class="has-tooltip gl-display-none gl-sm-display-block md badge badge-pill gl-badge badge-danger"
                         :style="{
                             color: 'var(--gl-badge-danger-text-color-default) !important',
-                            opacity: myUnresolvedThreadsCount.get(teleportId) ? 1 : 0.5,
                             listStyle: 'none',
                         }"
                         title="My unresolved threads"
@@ -45,17 +42,14 @@
                             style="fill: currentColor;"
                         />
 
-                        <span class="gl-font-weight-bold">{{ myUnresolvedThreadsCount.get(teleportId) || 0 }}</span>
+                        <span class="gl-font-weight-bold">{{ myUnresolvedThreadsCount.get(teleportId) }}</span>
                     </li>
 
                     <li
-                        :class="{
-                            'badge badge-pill gl-badge badge-warning':  unresolvedThreadsCount.get(teleportId),
-                        }"
-                        class="has-tooltip gl-display-none gl-sm-display-block gl-mr-3 md"
+                        v-if="unresolvedThreadsCount.get(teleportId)"
+                        class="has-tooltip gl-display-none gl-sm-display-block gl-mr-3 md badge badge-pill gl-badge badge-warning"
                         :style="{
                             color: 'var(--gl-badge-warning-text-color-default) !important',
-                            opacity: unresolvedThreadsCount.get(teleportId) ? 1 : 0.5,
                             listStyle: 'none',
                         }"
                         title="Unresolved threads"
@@ -66,7 +60,7 @@
                             style="fill: currentColor;"
                         />
 
-                        <span class="gl-font-weight-bold">{{ unresolvedThreadsCount.get(teleportId) || 0 }}</span>
+                        <span class="gl-font-weight-bold">{{ unresolvedThreadsCount.get(teleportId) }}</span>
                     </li>
                 </teleport>
             </template>

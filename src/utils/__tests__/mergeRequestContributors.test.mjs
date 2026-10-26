@@ -30,6 +30,7 @@ test('leaves out the filter of the current mode', () => {
 
     assert.equal(contributorApiParams(href, 'authors').toString(), 'state=merged&reviewer_username=tom');
     assert.equal(contributorApiParams(href, 'reviewers').toString(), 'state=merged&author_username=kevin');
+    assert.equal(contributorApiParams(href).toString(), 'state=merged&author_username=kevin&reviewer_username=tom');
 });
 
 test('categorizes merge requests by merge status', () => {
