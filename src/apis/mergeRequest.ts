@@ -3,9 +3,14 @@ import type { GitlabUser } from '../types';
 export interface IMergeRequestListItem {
     id: number;
     iid: number;
+    title: string;
+    web_url: string;
+    references: { relative: string };
     state: string;
     draft: boolean;
     detailed_merge_status: string;
+    has_conflicts: boolean;
+    blocking_discussions_resolved: boolean;
     created_at: string;
     author: GitlabUser;
     reviewers: GitlabUser[];

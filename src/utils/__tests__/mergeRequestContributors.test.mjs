@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     activeContributor,
+    blockedReasons,
     contributorApiParams,
     contributorCategory,
     contributorFilterUrl,
@@ -41,6 +42,21 @@ test('categorizes merge requests by merge status', () => {
     assert.equal(contributorCategory({ state: 'opened', draft: true, detailed_merge_status: 'conflict' }), 'draft');
     assert.equal(contributorCategory({ state: 'merged', detailed_merge_status: 'mergeable' }), 'merged');
     assert.equal(contributorCategory({ state: 'closed' }), 'closed');
+});
+
+test('explains why a merge request is blocked', () => {
+    assert.deepEqual(blockedReasons({ detailed_merge_status: 'ci_must_pass', has_conflicts: true, blocking_discussions_resolved: false }), ['Pipeline must succeed', 'Merge conflicts', 'Unresolved threads']);
+    assert.deepEqual(blockedReasons({ detailed_merge_status: 'conflict', has_conflicts: true, blocking_discussions_resolved: true }), ['Merge conflicts']);
+});
+
+test('lists the blocked merge requests per contributor', () => {
+    const kevin = { id: 1, name: 'Kevin' };
+    const [summary] = summarizeContributors([
+        { id: 10, iid: 6218, title: 'Add skill', web_url: 'https://gitlab.example/mr/6218', references: { relative: '!6218' }, author: kevin, state: 'opened', detailed_merge_status: 'discussions_not_resolved', blocking_discussions_resolved: false, created_at: '2026-10-20T00:00:00Z' },
+        { id: 11, iid: 6219, author: kevin, state: 'opened', detailed_merge_status: 'mergeable', created_at: '2026-10-21T00:00:00Z' },
+    ], 'authors');
+
+    assert.deepEqual(summary.blocked, [{ id: 10, reference: '!6218', title: 'Add skill', webUrl: 'https://gitlab.example/mr/6218', reasons: ['Unresolved threads'] }]);
 });
 
 test('summarizes authors and reviewers, busiest first', () => {

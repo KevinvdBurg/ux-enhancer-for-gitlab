@@ -131,10 +131,12 @@
                     No {{ mode === 'reviewers' ? 'reviewers' : 'authors' }} for these filters
                 </p>
 
-                <button
+                <div
                     v-for="summary in summaries"
                     :key="summary.user.id"
-
+                    class="contributors-sidebar__entry"
+                >
+                <button
                     :aria-pressed="summary.user.username === selectedUsername"
                     :class="{
                         'contributors-sidebar__row--active': summary.user.username === selectedUsername,
@@ -197,6 +199,48 @@
 
                     <span class="contributors-sidebar__count">{{ summary.total }}</span>
                 </button>
+
+                <template v-if="summary.blocked?.length">
+                    <button
+                        :aria-expanded="expandedBlocked.has(summary.user.id)"
+                        class="contributors-sidebar__blocked-toggle"
+                        type="button"
+                        @click="toggleBlocked(summary.user.id)"
+                    >
+                        <SvgIcon :path="expandedBlocked.has(summary.user.id) ? mdiChevronDown : mdiChevronRight" />
+
+                        Why {{ summary.blocked.length }} blocked
+                    </button>
+
+                    <ul
+                        v-if="expandedBlocked.has(summary.user.id)"
+                        class="contributors-sidebar__blocked"
+                    >
+                        <li
+                            v-for="mergeRequest in summary.blocked"
+                            :key="mergeRequest.id"
+                        >
+                            <a
+                                :href="mergeRequest.webUrl"
+                                :title="mergeRequest.title"
+                            >
+                                <span class="contributors-sidebar__blocked-title">
+                                    <strong>{{ mergeRequest.reference }}</strong>
+                                    {{ mergeRequest.title }}
+                                </span>
+
+                                <span class="contributors-sidebar__reasons">
+                                    <span
+                                        v-for="reason in mergeRequest.reasons"
+                                        :key="reason"
+                                        class="contributors-sidebar__reason"
+                                    >{{ reason }}</span>
+                                </span>
+                            </a>
+                        </li>
+                    </ul>
+                </template>
+                </div>
             </div>
 
             <p
@@ -215,6 +259,7 @@
 >
     import {
         mdiAccountGroupOutline,
+        mdiChevronDown,
         mdiChevronRight,
         mdiClose,
         mdiRefresh,
@@ -508,6 +553,14 @@
         navigateMergeRequestList(contributorFilterUrl(window.location.href, mode.value, username));
     }
 
+    const expandedBlocked: Ref<Set<number>> = ref(new Set());
+
+    function toggleBlocked(userId: number) {
+        const expanded = new Set(expandedBlocked.value);
+        expanded.has(userId) ? expanded.delete(userId) : expanded.add(userId);
+        expandedBlocked.value = expanded;
+    }
+
     function formatAge(createdAt: string) {
         const days = Math.floor((Date.now() - Date.parse(createdAt)) / 86_400_000);
         return days < 1 ? 'today' : `${days}d`;
@@ -771,6 +824,69 @@
         &--active:hover {
             background: var(--gl-background-color-strong, #ececef);
         }
+    }
+
+    .contributors-sidebar__blocked-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        margin: -0.375rem 0 0.25rem 2.25rem;
+        padding: 0.125rem 0.25rem;
+        border: 0;
+        border-radius: 0.25rem;
+        background: transparent;
+        color: var(--gl-status-warning-icon-color, #c17d10);
+        font-size: 0.75rem;
+        font-weight: 600;
+
+        &:hover {
+            background: var(--gl-background-color-subtle, #fbfafd);
+        }
+    }
+
+    .contributors-sidebar__blocked {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin: 0 0 0.5rem 2.5rem;
+        padding: 0;
+        list-style: none;
+        font-size: 0.75rem;
+
+        a {
+            display: flex;
+            flex-direction: column;
+            gap: 0.125rem;
+            padding: 0.25rem 0.375rem;
+            border-left: 2px solid var(--gl-status-warning-icon-color, #c17d10);
+            border-radius: 0 0.25rem 0.25rem 0;
+            color: inherit;
+            text-decoration: none;
+
+            &:hover {
+                background: var(--gl-background-color-subtle, #fbfafd);
+            }
+        }
+    }
+
+    .contributors-sidebar__blocked-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .contributors-sidebar__reasons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    .contributors-sidebar__reason {
+        padding: 0 0.375rem;
+        border-radius: 1rem;
+        background: var(--gl-background-color-strong, #ececef);
+        color: var(--gl-text-color-subtle, #626168);
+        line-height: 1.25rem;
     }
 
     .contributors-sidebar__avatar {

@@ -45,18 +45,24 @@ const LIST_PARAMS = {
     'approved_by_usernames[]': 'approved_by_usernames[]',
 };
 
-const BLOCKED_STATUSES = [
-    'blocked_status',
-    'ci_must_pass',
-    'conflict',
-    'discussions_not_resolved',
-    'external_status_checks',
-    'jira_association_missing',
-    'merge_request_blocked',
-    'need_rebase',
-    'requested_changes',
-    'security_policy_violations',
-];
+// What keeps a merge request from merging, per detailed_merge_status
+const BLOCKED_REASONS = {
+    blocked_status: 'Blocked by another merge request',
+    ci_must_pass: 'Pipeline must succeed',
+    conflict: 'Merge conflicts',
+    discussions_not_resolved: 'Unresolved threads',
+    external_status_checks: 'Status checks must pass',
+    jira_association_missing: 'Missing Jira issue',
+    locked_lfs_files: 'Locked files',
+    locked_paths: 'Locked paths',
+    merge_request_blocked: 'Blocked by another merge request',
+    need_rebase: 'Needs a rebase',
+    requested_changes: 'Changes requested',
+    security_policy_violations: 'Security policy violations',
+    status_checks_must_pass: 'Status checks must pass',
+    title_regex: 'Title does not match the required format',
+};
+const BLOCKED_STATUSES = Object.keys(BLOCKED_REASONS);
 
 /**
  * Translates the filters of a merge request list page into REST API query params.
@@ -199,13 +205,34 @@ export function contributorCategory(mergeRequest) {
 }
 
 /**
+ * Why a merge request cannot merge. detailed_merge_status names only the first failing check,
+ * so conflicts and unresolved threads are added from their own fields.
+ *
+ * @param {{ detailed_merge_status?: string, has_conflicts?: boolean, blocking_discussions_resolved?: boolean }} mergeRequest
+ * @returns {string[]}
+ */
+export function blockedReasons(mergeRequest) {
+    const reasons = [BLOCKED_REASONS[/** @type {keyof typeof BLOCKED_REASONS} */ (mergeRequest.detailed_merge_status)]];
+
+    if (mergeRequest.has_conflicts) {
+        reasons.push(BLOCKED_REASONS.conflict);
+    }
+
+    if (mergeRequest.blocking_discussions_resolved === false) {
+        reasons.push(BLOCKED_REASONS.discussions_not_resolved);
+    }
+
+    return [...new Set(reasons.filter(Boolean))];
+}
+
+/**
  * Groups merge requests per author or reviewer, busiest contributor first.
  *
  * @param {Array<Record<string, any>>} mergeRequests
  * @param {ContributorMode} mode
  */
 export function summarizeContributors(mergeRequests, mode) {
-    /** @type {Map<number, { user: Record<string, any>, total: number, counts: Record<ContributorCategory, number>, oldestCreatedAt: string | null }>} */
+    /** @type {Map<number, { user: Record<string, any>, total: number, counts: Record<ContributorCategory, number>, oldestCreatedAt: string | null, blocked: Array<{ id: number, reference: string, title: string, webUrl: string, reasons: string[] }> }>} */
     const summaries = new Map();
 
     mergeRequests.forEach((mergeRequest) => {
@@ -220,12 +247,23 @@ export function summarizeContributors(mergeRequests, mode) {
                     total: 0,
                     counts: Object.fromEntries(CONTRIBUTOR_CATEGORIES.map(key => [key, 0])),
                     oldestCreatedAt: null,
+                    blocked: [],
                 };
                 summaries.set(user.id, summary);
             }
 
             summary.total++;
             summary.counts[category]++;
+
+            if (category === 'blocked') {
+                summary.blocked.push({
+                    id: mergeRequest.id,
+                    reference: mergeRequest.references?.relative || `!${mergeRequest.iid}`,
+                    title: mergeRequest.title,
+                    webUrl: mergeRequest.web_url,
+                    reasons: blockedReasons(mergeRequest),
+                });
+            }
 
             if (!summary.oldestCreatedAt || mergeRequest.created_at < summary.oldestCreatedAt) {
                 summary.oldestCreatedAt = mergeRequest.created_at;
