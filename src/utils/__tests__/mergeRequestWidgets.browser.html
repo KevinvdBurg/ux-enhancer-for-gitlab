@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Merge widget regression checks</title>
+<body>
+<p>Run with npm run dev, then open this page.</p>
+<pre id="result">Running…</pre>
+<div id="notes-list"></div>
+<script type="module">
+    import { createApp, nextTick } from 'vue';
+    import MergeReadinessPanel from '../../components/MergeReadinessPanel.vue';
+    import { duplicateWidgetElements } from '../mergeRequestWidgets.js';
+    import '../../assets/main.scss';
+
+    const fixture = document.createElement('div');
+    fixture.className = 'issuable-discussion';
+    fixture.innerHTML = `
+        <section class="glab-enhancer-ready" data-pipeline data-approvals data-draft data-reports="Test summary">
+            <h2 class="glab-enhancer-ready__title">Draft</h2>
+        </section>
+        <div class="mr-state-widget">
+            <div data-testid="pipeline-container">Pipeline passed</div>
+            <div class="js-mr-approvals"><div class="mr-widget-body">
+                <span>Icon</span><div>
+                    <button data-testid="approve-button">Approve</button>
+                    <span data-testid="approvals-summary-content">Needs approval</span>
+                </div>
+            </div></div>
+            <div class="reports-widgets-container">
+                <div id="report"><span data-testid="status-warning-icon" aria-label="Warning WidgetTestSummary"></span>Report details</div>
+            </div>
+            <div class="mr-widget-body" id="header">Merge blocked</div>
+            <div data-testid="merge-checks-full"><div>
+                <div data-testid="merge-check" id="draft"><div class="gl-relative"></div><div class="gl-w-full">Merge request must not be draft.</div><button data-testid="mark-as-ready-button">Mark as ready</button></div>
+                <div data-testid="merge-check" id="pipeline">Pipeline must succeed.</div>
+                <div data-testid="merge-check" id="threads">Open threads must be resolved.<button>Go to first open thread</button></div>
+                <div data-testid="merge-check" id="approvals">All required approvals must be given.<button>Assign reviewers</button></div>
+            </div></div>
+            <div data-testid="ready_to_merge_state"><button>Merge</button><button>Set to auto-merge</button><button>Rebase source branch</button><input type="checkbox" aria-label="Squash commits"></div>
+        </div>`;
+    document.body.append(fixture);
+    const panel = fixture.querySelector('.glab-enhancer-ready');
+    const widget = fixture.querySelector('.mr-state-widget');
+    const find = selector => fixture.querySelector(selector);
+    const assert = (value, message) => { if (!value) throw new Error(message); };
+    const visible = selector => find(selector).checkVisibility();
+    function apply() {
+        fixture.querySelectorAll('.glab-enhancer-summary-hidden').forEach(e => e.classList.remove('glab-enhancer-summary-hidden'));
+        duplicateWidgetElements(widget, panel.isConnected ? panel : null).forEach(e => e.classList.add('glab-enhancer-summary-hidden'));
+    }
+    try {
+        apply();
+        assert(!visible('[data-testid="pipeline-container"]') && !visible('#pipeline') && !visible('#threads') && !visible('#approvals'), 'Duplicate checks must hide');
+        assert(visible('[data-testid="approve-button"]') && visible('[data-testid="mark-as-ready-button"]') && visible('[data-testid="ready_to_merge_state"]'), 'Native controls must stay visible');
+        find('[data-testid="approve-button"]').textContent = 'Revoke approval';
+        apply();
+        assert(visible('[data-testid="approve-button"]'), 'Revoke approval must stay visible');
+        assert(!visible('#report'), 'Report summary must hide');
+        find('#report').classList.add('glab-enhancer-report-expanded');
+        assert(visible('#report'), 'Show report must reveal details');
+        find('#pipeline').textContent = 'A new policy must pass.';
+        apply();
+        assert(visible('#pipeline') && visible('#header'), 'Unknown checks and their header must stay visible');
+        find('#pipeline').innerHTML = 'Pipeline must succeed.<button>Run pipeline</button>';
+        apply();
+        assert(visible('#pipeline'), 'Actions absent from the panel must stay visible');
+        panel.removeAttribute('data-approvals');
+        apply();
+        assert(visible('#approvals') && visible('[data-testid="approvals-summary-content"]'), 'Missing API data must preserve native approvals');
+        panel.remove();
+        assert(visible('[data-testid="pipeline-container"]') && visible('#threads'), 'Removing the panel must restore summaries immediately');
+        fixture.prepend(panel);
+        find('[data-testid="merge-checks-full"]').remove();
+        find('#header').textContent = 'Ready to merge!';
+        find('.glab-enhancer-ready__title').textContent = 'Ready to merge';
+        apply();
+        assert(!visible('#header') && visible('[data-testid="ready_to_merge_state"]'), 'Ready state must preserve merge controls');
+        panel.remove();
+        const host = document.createElement('div');
+        fixture.prepend(host);
+        const report = find('#report');
+        report.classList.remove('glab-enhancer-report-expanded');
+        const app = createApp(MergeReadinessPanel, {
+            me: 'author', mergeRequest: { state: 'opened', draft: false }, reviewState: null,
+            openThreads: [], failedJobs: [], newEntries: [], sinceReview: null,
+            checklist: { done: 0, total: 0, firstOpen: null },
+            reports: [{ name: 'Test summary', detail: 'Tests failed', isPassing: false, element: report }],
+        });
+        app.mount(host);
+        await nextTick();
+        assert(!visible('#report'), 'Report should start hidden behind the actual panel');
+        [...host.querySelectorAll('button')].find(button => button.textContent.trim() === 'Show report').click();
+        assert(visible('#report'), 'The actual Show report action must reveal details');
+        app.unmount();
+        document.querySelector('#result').textContent = 'PASS: duplicates, draft, approve/revoke, reports, unknown checks, extra actions, missing data, panel off, ready state, Show report action';
+    } catch (error) {
+        document.querySelector('#result').textContent = `FAIL: ${error.message}`;
+        throw error;
+    }
+</script>
+</body>
+</html>

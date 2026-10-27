@@ -2,6 +2,10 @@
     <section
         class="glab-enhancer-ready"
         :class="`glab-enhancer-ready--${tone}`"
+        :data-pipeline="pipeline ? true : undefined"
+        :data-approvals="approvals ? true : undefined"
+        :data-draft="mergeRequest.draft ? true : undefined"
+        :data-reports="reports.map(report => report.name).join('|')"
     >
         <header class="glab-enhancer-ready__header">
             <SvgIcon
@@ -44,38 +48,10 @@
                 :key="index"
             >
                 <span v-if="index"> · </span>
-                <strong :class="{ 'glab-enhancer-ready__you': item.usernames.includes(me) }">{{ item.label }}</strong>
+                <strong>{{ item.label }}</strong>
                 to {{ item.task }}
             </template>
         </p>
-
-        <ul
-            v-if="people.length"
-            class="glab-enhancer-ready__people"
-        >
-            <li
-                v-for="person in people"
-                :key="person.username"
-                class="glab-enhancer-ready__person"
-            >
-                <a
-                    class="glab-enhancer-ready__person-link"
-                    :href="person.webUrl"
-                >
-                    <img
-                        alt=""
-                        class="gl-avatar gl-avatar-circle gl-avatar-s24"
-                        :src="person.avatarUrl"
-                    >
-                    {{ person.username === me ? 'You' : shortName(person.name) }}
-                </a>
-
-                <span
-                    class="glab-enhancer-ready__person-state"
-                    :class="`glab-enhancer-ready__person-state--${person.tone}`"
-                >{{ person.state }}</span>
-            </li>
-        </ul>
 
         <ul
             v-if="checks.length || passing.length"
@@ -225,61 +201,9 @@
         merged: mdiSourceMerge,
     };
 
-    const REVIEW_STATES: Record<string, { label: string, tone: string }> = {
-        UNREVIEWED: {
-            label: 'Not started',
-            tone: 'muted',
-        },
-        REVIEW_STARTED: {
-            label: 'Reviewing',
-            tone: 'info',
-        },
-        REVIEWED: {
-            label: 'Commented',
-            tone: 'info',
-        },
-        REQUESTED_CHANGES: {
-            label: 'Requested changes',
-            tone: 'danger',
-        },
-        APPROVED: {
-            label: 'Approved',
-            tone: 'success',
-        },
-        UNAPPROVED: {
-            label: 'Approval revoked',
-            tone: 'warning',
-        },
-    };
-
     const approvals = computed(() => (reviewState ? approvalSummary(reviewState) : null));
     const pipeline = computed(() => mergeRequest.head_pipeline || null);
     const reviewers = computed(() => reviewState?.reviewers.nodes || []);
-
-    const people = computed(() => {
-        const author = reviewState?.author;
-        const items = reviewers.value
-            .filter(reviewer => reviewer.username !== author?.username)
-            .map((reviewer) => {
-                const state = reviewer.mergeRequestInteraction?.approved
-                    ? REVIEW_STATES.APPROVED
-                    : REVIEW_STATES[reviewer.mergeRequestInteraction?.reviewState || 'UNREVIEWED'] || REVIEW_STATES.UNREVIEWED;
-
-                return {
-                    ...reviewer,
-                    state: state.label,
-                    tone: state.tone,
-                };
-            });
-
-        return author
-            ? [{
-                ...author,
-                state: 'Author',
-                tone: 'muted',
-            }, ...items]
-            : items;
-    });
 
     const waiting = computed(() => {
         if (!reviewState?.author) {
@@ -387,7 +311,10 @@
                 text: report.name,
                 detail: report.detail,
                 action: 'Show report',
-                onAction: () => scrollTo(report.element),
+                onAction: () => {
+                    report.element.classList.add('glab-enhancer-report-expanded');
+                    scrollTo(report.element);
+                },
             });
         });
 

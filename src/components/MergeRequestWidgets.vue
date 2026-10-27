@@ -19,9 +19,11 @@
         hasActiveSession,
         reportName,
     } from '../utils/mergeRequestPage';
+    import { duplicateWidgetElements } from '../utils/mergeRequestWidgets';
 
     const HIDDEN_CLASS = 'glab-enhancer-widget-hidden';
     const REPORTS_CLASS = 'glab-enhancer-passing-reports';
+    const SUMMARY_HIDDEN_CLASS = 'glab-enhancer-summary-hidden';
 
     const { getSetting } = useExtensionStore();
     const isEnabled = computed(() => !!getSetting(Preference.MR_COMPACT_WIDGETS, true));
@@ -90,17 +92,30 @@
         hide(approvals, isInMergeChecks && !canApprove);
     }
 
-    function apply(widget: HTMLElement) {
-        if (!isEnabled.value) {
-            clean();
+    function apply(overview: HTMLElement) {
+        const widget = overview.querySelector<HTMLElement>('.mr-state-widget');
+        if (!widget) {
             return;
         }
 
-        const sessions = widget.querySelector('[data-testid="agent-sessions-widget"]');
-        hide(sessions, !!sessions && !hasActiveSession(sessions.textContent || ''));
+        if (!isEnabled.value) {
+            clean();
+        } else {
+            const sessions = widget.querySelector('[data-testid="agent-sessions-widget"]');
+            hide(sessions, !!sessions && !hasActiveSession(sessions.textContent || ''));
 
-        foldPassingReports(widget);
-        foldApprovals(widget);
+            foldPassingReports(widget);
+            foldApprovals(widget);
+        }
+
+        const hidden = duplicateWidgetElements(widget, overview.querySelector('.glab-enhancer-ready'));
+        const marked = widget.querySelectorAll(`.${SUMMARY_HIDDEN_CLASS}`);
+        new Set([...marked, ...hidden]).forEach((element) => {
+            const isHidden = hidden.has(element);
+            if (element.classList.contains(SUMMARY_HIDDEN_CLASS) !== isHidden) {
+                element.classList.toggle(SUMMARY_HIDDEN_CLASS, isHidden);
+            }
+        });
     }
 
     function clean() {
@@ -108,9 +123,14 @@
         document.querySelectorAll(`.${HIDDEN_CLASS}`).forEach(element => element.classList.remove(HIDDEN_CLASS));
     }
 
-    const { run } = useWatchedElement('.mr-state-widget', apply);
+    // Also watches panel loading, preference changes and report actions.
+    const { run } = useWatchedElement('.issuable-discussion', apply);
 
     watch(isEnabled, run);
 
-    onBeforeUnmount(clean);
+    onBeforeUnmount(() => {
+        clean();
+        document.querySelectorAll(`.${SUMMARY_HIDDEN_CLASS}, .glab-enhancer-report-expanded`)
+            .forEach(element => element.classList.remove(SUMMARY_HIDDEN_CLASS, 'glab-enhancer-report-expanded'));
+    });
 </script>

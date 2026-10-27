@@ -178,59 +178,6 @@ li.merge-request {
     }
 }
 
-.glab-enhancer-ready__you {
-    color: var(--gl-badge-tier-text-color-default, #5943b6) !important;
-}
-
-.glab-enhancer-ready__people {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 1.25rem;
-    margin: 0;
-    padding: 0.75rem 1rem 0 2.5rem;
-    list-style: none;
-}
-
-.glab-enhancer-ready__person {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.glab-enhancer-ready__person-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    color: var(--gl-text-color-default, #3a383f);
-    font-weight: 600;
-    text-decoration: none;
-
-    img {
-        margin: 0;
-    }
-}
-
-.glab-enhancer-ready__person-state {
-    color: var(--gl-text-color-subtle, #626168);
-    font-size: 0.75rem;
-
-    &--success {
-        color: var(--gl-status-success-text-color, #217645);
-    }
-
-    &--danger {
-        color: var(--gl-status-danger-text-color, #c91c00);
-    }
-
-    &--warning {
-        color: var(--gl-status-warning-text-color, #9e5400);
-    }
-
-    &--info {
-        color: var(--gl-status-info-text-color, #0b5cad);
-    }
-}
-
 .glab-enhancer-ready > :last-child:not(.glab-enhancer-ready__checks) {
     padding-bottom: 0.75rem;
 }
@@ -299,8 +246,14 @@ li.merge-request {
 // Open threads first: CSS order moves them up without touching GitLab's list
 
 #notes-list.glab-enhancer-threads-first {
+    isolation: isolate;
     display: flex;
     flex-direction: column;
+
+    &::before {
+        top: 2.5rem;
+        z-index: -1;
+    }
 
     > .glab-enhancer-activity-heading--open {
         order: -3;
@@ -316,7 +269,10 @@ li.merge-request {
 }
 
 li.glab-enhancer-activity-heading {
+    position: relative;
     margin: 1rem 0 0.5rem;
+    padding-left: 40px;
+    background: var(--gl-background-color-default, #fff);
     color: var(--gl-text-color-subtle, #626168);
     font-size: 0.75rem;
     font-weight: 600;
@@ -446,6 +402,8 @@ li.glab-enhancer-fold {
 
 // Merge widgets and sidebar
 
+// Restore GitLab immediately if the panel disappears or its preference is disabled.
+.issuable-discussion:has(.glab-enhancer-ready) .glab-enhancer-summary-hidden:not(.glab-enhancer-report-expanded),
 .glab-enhancer-widget-hidden,
 .glab-enhancer-sidebar-hidden {
     display: none !important;

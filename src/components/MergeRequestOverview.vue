@@ -402,7 +402,7 @@
         }).filter(Boolean) as WidgetReport[];
 
         const signature = (items: WidgetReport[]) => items.map(report => `${report.name}:${report.isPassing}:${report.detail}`).join('|');
-        if (signature(found) !== signature(reports.value)) {
+        if (signature(found) !== signature(reports.value) || found.some((report, index) => report.element !== reports.value[index]?.element)) {
             reports.value = found;
         }
     });
