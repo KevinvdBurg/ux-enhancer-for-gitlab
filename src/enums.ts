@@ -38,6 +38,7 @@ export const enum Preference {
     MR_COMPACT_LIST = 'mr_compact_list',
     MR_SUMMARY_BAR = 'mr_summary_bar',
     MR_CLEAN_ACTIVITY = 'mr_clean_activity',
+    MR_THREADS_FIRST = 'mr_threads_first',
     MR_NEW_SINCE_VISIT = 'mr_new_since_visit',
     MR_DESCRIPTION_SECTIONS = 'mr_description_sections',
     MR_COMPACT_WIDGETS = 'mr_compact_widgets',

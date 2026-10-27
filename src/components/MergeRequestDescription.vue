@@ -91,11 +91,13 @@
     }
 
     function shrinkTaskList(list: HTMLElement, index: number) {
-        const items = [...list.querySelectorAll(':scope > li.task-list-item')];
+        // Items marked as not applicable count as neither done nor open, and fold with the done ones
+        const all = [...list.querySelectorAll(':scope > li.task-list-item')];
+        const items = all.filter(item => !item.classList.contains('inapplicable'));
         const done = items.filter(item => (item.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]') as HTMLInputElement | null)?.checked);
         const isShrunk = done.length >= MIN_DONE_TO_SHRINK && !expandedTaskLists.value.has(index);
 
-        items.forEach(item => item.classList.toggle(DONE_CLASS, isShrunk && done.includes(item)));
+        all.forEach(item => item.classList.toggle(DONE_CLASS, isShrunk && (!items.includes(item) || done.includes(item))));
 
         let toggle = list.nextElementSibling?.classList.contains(TASKS_TOGGLE_CLASS) ? list.nextElementSibling as HTMLButtonElement : null;
         if (done.length < MIN_DONE_TO_SHRINK) {
@@ -150,7 +152,7 @@
         sections.forEach((section, index) => {
             const heading = children[section.heading];
             const isOpen = openSections.value === null || openSections.value.has(titles[index]);
-            const tasks = section.members.flatMap(member => [...children[member].querySelectorAll('input.task-list-item-checkbox')]) as HTMLInputElement[];
+            const tasks = section.members.flatMap(member => [...children[member].querySelectorAll('input.task-list-item-checkbox:not([data-inapplicable])')]) as HTMLInputElement[];
 
             heading.classList.add(HEADING_CLASS);
             heading.classList.toggle(COLLAPSED_CLASS, !isOpen);

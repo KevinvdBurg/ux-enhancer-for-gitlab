@@ -130,14 +130,25 @@ export async function fetchUnresolvedThreadCounts(projectPath: string, iids: str
     }
 }
 
+export interface MergeRequestReviewer {
+    username: string;
+    name: string;
+    avatarUrl: string;
+    webUrl: string;
+    bot: boolean;
+    mergeRequestInteraction: { reviewState: string | null, approved: boolean } | null;
+}
+
 export interface MergeRequestApprovals {
     approved: boolean;
     approvedBy: { nodes: Array<{ username: string }> };
     approvalState: { rules: Array<{ name: string, type: string, approvalsRequired: number, approved: boolean }> };
+    author: { username: string, name: string, avatarUrl: string, webUrl: string } | null;
+    reviewers: { nodes: MergeRequestReviewer[] };
 }
 
 /**
- * Approval rules of one merge request. The REST API sums the rules into one number,
+ * Approval rules and reviewers of one merge request. The REST API sums the rules into one number,
  * which is not what GitLab shows. Resolves to null when GitLab cannot answer it.
  */
 export async function fetchMergeRequestApprovals(projectPath: string, iid: number, csrfToken: string) {
@@ -155,6 +166,8 @@ export async function fetchMergeRequestApprovals(projectPath: string, iid: numbe
                             approved
                             approvedBy { nodes { username } }
                             approvalState { rules { name type approvalsRequired approved } }
+                            author { username name avatarUrl webUrl }
+                            reviewers { nodes { username name avatarUrl webUrl bot mergeRequestInteraction { reviewState approved } } }
                         }
                     }
                 }`,
@@ -170,4 +183,38 @@ export async function fetchMergeRequestApprovals(projectPath: string, iid: numbe
     } catch {
         return null;
     }
+}
+
+export interface FailedJob {
+    id: number;
+    name: string;
+    web_url: string;
+    allow_failure: boolean;
+}
+
+/**
+ * The jobs that failed a pipeline, without the ones allowed to fail.
+ */
+export async function fetchFailedJobs(projectPath: string, pipelineId: number) {
+    const response = await fetch(`/api/v4/projects/${encodeURIComponent(projectPath)}/pipelines/${pipelineId}/jobs?is_custom=1&scope[]=failed&per_page=20`);
+    if (!response.ok) {
+        return [];
+    }
+
+    return ((await response.json()) as FailedJob[]).filter(job => !job.allow_failure);
+}
+
+export interface MergeRequestVersion {
+    id: number;
+    head_commit_sha: string;
+    created_at: string;
+}
+
+/**
+ * Every push to a merge request, the newest first.
+ */
+export async function fetchMergeRequestVersions(projectPath: string, iid: number) {
+    const response = await fetch(`/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${iid}/versions?is_custom=1&per_page=100`);
+
+    return response.ok ? (await response.json()) as MergeRequestVersion[] : [];
 }

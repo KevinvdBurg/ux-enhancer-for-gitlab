@@ -1,84 +1,19 @@
 <template>
     <teleport
-        v-if="isSummaryEnabled && barElement && mergeRequest"
-        :to="barElement"
+        v-if="isPanelEnabled && panelElement && mergeRequest"
+        :to="panelElement"
     >
-        <div class="glab-enhancer-summary">
-            <span
-                v-if="status.category"
-                :class="`badge-${CATEGORY_META[status.category].badge}`"
-                class="gl-badge badge badge-pill has-tooltip"
-                :title="status.reasons.length ? `${CATEGORY_META[status.category].label}: ${status.reasons.join(', ')}` : CATEGORY_META[status.category].label"
-            >
-                <span class="gl-badge-content">{{ CATEGORY_META[status.category].chip }}</span>
-            </span>
-
-            <span
-                v-if="status.yourTurn"
-                class="gl-badge badge badge-pill glab-enhancer-your-turn-badge has-tooltip"
-                :title="status.yourTurn"
-            >
-                <span class="gl-badge-content">Your turn</span>
-            </span>
-
-            <button
-                v-if="openThreads.length"
-                class="glab-enhancer-summary__item has-tooltip"
-                title="Go to the next open thread"
-                type="button"
-                @click="scrollToNext(openThreads, 'thread')"
-            >
-                <SvgIcon :path="mdiCommentAlertOutline" />
-                {{ openThreads.length }} open {{ openThreads.length === 1 ? 'thread' : 'threads' }}
-            </button>
-
-            <a
-                v-if="pipeline && pipeline.status !== 'success'"
-                :class="`glab-enhancer-summary__item--${pipeline.status === 'failed' ? 'danger' : 'muted'}`"
-                class="glab-enhancer-summary__item"
-                :href="pipeline.web_url"
-            >
-                <SvgIcon :path="pipeline.status === 'failed' ? mdiCloseCircleOutline : mdiProgressClock" />
-                Pipeline {{ pipeline.detailed_status?.text?.toLowerCase() || pipeline.status }}
-            </a>
-
-            <span
-                v-if="approvals"
-                :class="{
-                    'glab-enhancer-summary__item--success': approvals.approved,
-                }"
-                class="glab-enhancer-summary__item has-tooltip"
-                :title="approvals.missingRules.length ? `Still needs code owners: ${approvals.missingRules.join(', ')}` : ''"
-            >
-                <SvgIcon :path="mdiCheckDecagramOutline" />
-                {{ approvals.approved ? 'Approved' : `${approvals.given} of ${approvals.required} approvals` }}
-                <template v-if="!approvals.approved && approvals.missingRules.length">
-                    · {{ approvals.missingRules.length }} code {{ approvals.missingRules.length === 1 ? 'owner' : 'owners' }}
-                </template>
-            </span>
-
-            <button
-                v-if="mergeRequest.diverged_commits_count"
-                class="glab-enhancer-summary__item has-tooltip"
-                title="Go to the merge widget"
-                type="button"
-                @click="scrollToWidget"
-            >
-                <SvgIcon :path="mdiSourceBranchSync" />
-                {{ mergeRequest.diverged_commits_count }} {{ mergeRequest.diverged_commits_count === 1 ? 'commit' : 'commits' }} behind
-            </button>
-
-            <button
-                v-if="newEntries.length"
-                class="glab-enhancer-summary__item glab-enhancer-summary__item--new has-tooltip"
-                title="Go to the next activity since your last visit"
-                type="button"
-                @click="scrollToNext(newEntries, 'new')"
-            >
-                <SvgIcon :path="mdiArrowDown" />
-                {{ newEntries.length }} new since your last visit
-            </button>
-        </div>
+        <MergeReadinessPanel
+            :checklist="checklist"
+            :failed-jobs="failedJobs"
+            :me="gitlabUsername"
+            :merge-request="mergeRequest"
+            :new-entries="newEntries"
+            :open-threads="openThreads"
+            :reports="reports"
+            :review-state="reviewState"
+            :since-review="sinceReview"
+        />
     </teleport>
 </template>
 
@@ -86,14 +21,6 @@
     lang="ts"
     setup
 >
-    import {
-        mdiArrowDown,
-        mdiCheckDecagramOutline,
-        mdiCloseCircleOutline,
-        mdiCommentAlertOutline,
-        mdiProgressClock,
-        mdiSourceBranchSync,
-    } from '@mdi/js';
     import {
         useIntervalFn,
         useLocalStorage,
@@ -110,10 +37,15 @@
         watch,
     } from 'vue';
     import {
+        type FailedJob,
+        fetchFailedJobs,
         fetchMergeRequestApprovals,
-        type IMergeRequestListItem,
+        fetchMergeRequestVersions,
+        type MergeRequestApprovals,
+        type MergeRequestVersion,
     } from '../apis/mergeRequest';
     import { useMitt } from '../composables/useMitt';
+    import { useWatchedElement } from '../composables/useWatchedElement';
     import { APP_NAMESPACE } from '../constants';
     import {
         MittEventKey,
@@ -121,15 +53,22 @@
     } from '../enums';
     import { useExtensionStore } from '../store';
     import {
-        approvalSummary,
         authorsLabel,
         classifySystemNote,
+        dayLabel,
         describeFold,
         foldRuns,
     } from '../utils/mergeRequestActivity';
-    import { CATEGORY_META } from '../utils/mergeRequestCategories';
-    import { rowStatus } from '../utils/mergeRequestRowStatus';
-    import SvgIcon from './SvgIcon.vue';
+    import {
+        changesSinceReview,
+        reportName,
+    } from '../utils/mergeRequestPage';
+    import MergeReadinessPanel, {
+        type Checklist,
+        type MergeRequest,
+        type OpenThread,
+        type WidgetReport,
+    } from './MergeReadinessPanel.vue';
 
     interface Props {
         iid: number,
@@ -143,15 +82,15 @@
         csrfToken,
     } = defineProps<Props>();
 
-    type MergeRequest = IMergeRequestListItem & {
-        diverged_commits_count?: number;
-        head_pipeline?: { status: string, web_url: string, detailed_status?: { text?: string } } | null;
-    };
-
     const FOLD_CLASS = 'glab-enhancer-fold';
     const FOLDED_CLASS = 'glab-enhancer-folded';
     const NEW_CLASS = 'glab-enhancer-new';
+    const THREADS_FIRST_CLASS = 'glab-enhancer-threads-first';
+    const OPEN_THREAD_CLASS = 'glab-enhancer-open-thread';
+    const HEADING_CLASS = 'glab-enhancer-activity-heading';
+    const PANEL_ID = 'glab-enhancer-ready-panel';
     const MAX_LAST_SEEN = 300;
+    const REVIEW_NOTE = /^(approved this merge request|requested changes|left review comments)/;
 
     const { getSetting } = useExtensionStore();
     const { gitlabUsername } = storeToRefs(useExtensionStore());
@@ -160,25 +99,41 @@
         off,
     } = useMitt();
 
-    const isSummaryEnabled = computed(() => !!getSetting(Preference.MR_SUMMARY_BAR, true));
+    const isPanelEnabled = computed(() => !!getSetting(Preference.MR_SUMMARY_BAR, true));
     const isCleanActivityEnabled = computed(() => !!getSetting(Preference.MR_CLEAN_ACTIVITY, true));
+    const isThreadsFirstEnabled = computed(() => !!getSetting(Preference.MR_THREADS_FIRST, true));
     const isNewSinceVisitEnabled = computed(() => !!getSetting(Preference.MR_NEW_SINCE_VISIT, true));
 
     const mergeRequest: Ref<MergeRequest | null> = shallowRef(null);
-    const approvals: Ref<ReturnType<typeof approvalSummary> | null> = shallowRef(null);
-    const approvedByMe: Ref<boolean | undefined> = ref(undefined);
-    const barElement: Ref<HTMLElement | null> = shallowRef(null);
-    const openThreads: Ref<HTMLElement[]> = shallowRef([]);
+    const reviewState: Ref<MergeRequestApprovals | null> = shallowRef(null);
+    const failedJobs: Ref<FailedJob[]> = shallowRef([]);
+    const versions: Ref<MergeRequestVersion[]> = shallowRef([]);
+    const panelElement: Ref<HTMLElement | null> = shallowRef(null);
+    const openThreads: Ref<OpenThread[]> = shallowRef([]);
     const newEntries: Ref<HTMLElement[]> = shallowRef([]);
+    const reports: Ref<WidgetReport[]> = shallowRef([]);
+    const checklist: Ref<Checklist> = shallowRef({
+        done: 0,
+        total: 0,
+        firstOpen: null,
+    });
+    const myLastNoteAt: Ref<string | null> = ref(null);
 
-    const pipeline = computed(() => mergeRequest.value?.head_pipeline || null);
-    const status = computed(() => mergeRequest.value
-        ? rowStatus(mergeRequest.value, gitlabUsername.value, { approvedByMe: approvedByMe.value })
-        : {
-            category: null,
-            reasons: [],
-            yourTurn: null,
-        });
+    const sinceReview = computed(() => {
+        // Only reviewers come back to see what changed
+        if (!mergeRequest.value || mergeRequest.value.author?.username === gitlabUsername.value) {
+            return null;
+        }
+
+        const changes = changesSinceReview(versions.value, myLastNoteAt.value);
+
+        return changes
+            ? {
+                count: changes.count,
+                url: `${mergeRequest.value.web_url}/diffs?diff_id=${changes.diffId}&start_sha=${changes.startSha}`,
+            }
+            : null;
+    });
 
     // --- Merge request data ---
 
@@ -191,9 +146,16 @@
         if (response.ok) {
             mergeRequest.value = await response.json();
         }
+        reviewState.value = approvalData;
 
-        approvals.value = approvalData ? approvalSummary(approvalData) : null;
-        approvedByMe.value = approvalData ? approvalData.approvedBy.nodes.some(user => user.username === gitlabUsername.value) : undefined;
+        const data = mergeRequest.value;
+        const pipeline = data?.head_pipeline;
+        const [jobs, pushes] = await Promise.all([
+            pipeline?.status === 'failed' ? fetchFailedJobs(currentProjectPath, pipeline.id) : [],
+            data && data.state === 'opened' && data.author?.username !== gitlabUsername.value ? fetchMergeRequestVersions(currentProjectPath, iid) : [],
+        ]);
+        failedJobs.value = jobs;
+        versions.value = pushes;
     }
 
     const debouncedLoad = debounce(load, 1000);
@@ -229,26 +191,36 @@
         return parseInt(element.id.replace('note_', ''), 10) || 0;
     }
 
+    function commentsOf(entry: Element) {
+        return [entry, ...entry.querySelectorAll('[id^="note_"]')].filter(note => note.id.startsWith('note_') && !note.classList.contains('system-note'));
+    }
+
+    function authorOf(note: Element) {
+        return note.querySelector('.author-name-link')?.getAttribute('data-username') || '';
+    }
+
     /**
      * Whether an entry holds a comment by someone else that is newer than your last visit.
      * History, like pushes and submitted reviews, does not count, so it keeps folding.
      */
     function hasNewNote(entry: HTMLElement) {
-        const notes = [entry, ...entry.querySelectorAll('[id^="note_"]')].filter(note => note.id.startsWith('note_'));
-
-        return notes.some((note) => {
-            const id = noteIdOf(note);
-            newestNoteId = Math.max(newestNoteId, id);
-
-            const author = note.querySelector('.author-name-link')?.getAttribute('data-username');
-            return lastSeen !== undefined && id > lastSeen && author !== gitlabUsername.value && !note.classList.contains('system-note');
+        [entry, ...entry.querySelectorAll('[id^="note_"]')].forEach((note) => {
+            newestNoteId = Math.max(newestNoteId, noteIdOf(note));
         });
+
+        return lastSeen !== undefined && commentsOf(entry).some(note => noteIdOf(note) > lastSeen && authorOf(note) !== gitlabUsername.value);
     }
 
     // --- Folding the activity ---
 
     const expandedFolds = ref(new Set<string>());
     let foldSignature = '';
+
+    function dayOf(entry: Element) {
+        const time = entry.querySelector('time')?.getAttribute('datetime');
+
+        return time ? new Date(time).toDateString() : '';
+    }
 
     function createFold(key: string, entries: HTMLElement[], kinds: string[], isExpanded: boolean) {
         const fold = document.createElement('li');
@@ -272,10 +244,10 @@
         text.className = `${FOLD_CLASS}__text`;
         text.append(authors, ` ${describeFold(kinds)}`);
 
-        const times = entries.map(entry => entry.querySelector('time')?.textContent?.trim()).filter(Boolean);
+        const datetime = entries.map(entry => entry.querySelector('time')?.getAttribute('datetime')).find(Boolean);
         const time = document.createElement('span');
         time.className = `${FOLD_CLASS}__time`;
-        time.textContent = [...new Set([times[0], times[times.length - 1]])].join(' – ');
+        time.textContent = datetime ? dayLabel(new Date(datetime), new Date()) : '';
 
         button.append(chevron, text, time);
         fold.append(button);
@@ -292,9 +264,50 @@
     }
 
     /**
-     * Folds runs of history and resolved threads, and marks what is new since your last visit.
-     * GitLab adds and changes notes while you read, so this runs on every change and only
-     * rebuilds the folds when they differ.
+     * Keeps the "To resolve" and "History" headings in place. CSS moves open threads above the
+     * history, so GitLab's own list stays in its order.
+     */
+    function placeHeadings(list: Element, openCount: number) {
+        const isShown = isThreadsFirstEnabled.value && openCount > 0;
+        list.classList.toggle(THREADS_FIRST_CLASS, isShown);
+
+        ['open', 'history'].forEach((kind) => {
+            let heading = list.querySelector(`:scope > .${HEADING_CLASS}--${kind}`);
+            if (!isShown) {
+                heading?.remove();
+                return;
+            }
+
+            if (!heading) {
+                heading = document.createElement('li');
+                heading.className = `${HEADING_CLASS} ${HEADING_CLASS}--${kind}`;
+                list.prepend(heading);
+            }
+
+            const text = kind === 'open' ? `To resolve · ${openCount}` : 'History';
+            if (heading.textContent !== text) {
+                heading.textContent = text;
+            }
+        });
+    }
+
+    function threadOf(item: HTMLElement): OpenThread {
+        const comments = commentsOf(item);
+        const first = comments[0];
+
+        return {
+            element: item,
+            starter: first ? authorOf(first) : '',
+            starterName: first?.querySelector('[data-testid="author-name"]')?.textContent?.trim() || '',
+            last: comments.length ? authorOf(comments[comments.length - 1]) : '',
+            file: item.querySelector('.file-title-name, .js-file-title')?.textContent?.trim() || '',
+        };
+    }
+
+    /**
+     * Folds runs of history and resolved threads per day, lifts open threads to the top, and marks
+     * what is new since your last visit. GitLab adds and changes notes while you read, so this runs
+     * on every change and only rebuilds the folds when they differ.
      */
     function scan() {
         const list = document.querySelector('#notes-list');
@@ -303,11 +316,22 @@
         }
 
         const hashTarget = window.location.hash.startsWith('#note_') ? document.getElementById(window.location.hash.slice(1)) : null;
-        const items = [...list.children].filter(item => !item.classList.contains(FOLD_CLASS)) as HTMLElement[];
+        const items = [...list.children].filter(item => !item.classList.contains(FOLD_CLASS) && !item.classList.contains(HEADING_CLASS)) as HTMLElement[];
+        const open = items.filter(item => item.querySelector('.discussion[data-discussion-resolvable="true"]:not([data-discussion-resolved="true"])'));
+        const isLifting = isThreadsFirstEnabled.value && open.length > 0;
+        let lastNoteAt = '';
 
         const entries = items.map((item) => {
             const isNew = hasNewNote(item);
             item.classList.toggle(NEW_CLASS, isNewSinceVisitEnabled.value && isNew);
+            item.classList.toggle(OPEN_THREAD_CLASS, isLifting && open.includes(item));
+
+            // Your last review is your last comment, approval or submitted review
+            const reviewNotes = item.classList.contains('system-note') && REVIEW_NOTE.test(item.querySelector('.system-note-message')?.textContent?.trim() || '') ? [item] : [];
+            [...commentsOf(item), ...reviewNotes].filter(note => authorOf(note) === gitlabUsername.value).forEach((note) => {
+                const time = note.querySelector('time')?.getAttribute('datetime') || '';
+                lastNoteAt = time > lastNoteAt ? time : lastNoteAt;
+            });
 
             let kind = 'keep';
             if (item.classList.contains('system-note')) {
@@ -318,9 +342,15 @@
 
             return {
                 kind,
+                day: dayOf(item),
+                isSkipped: isLifting && open.includes(item),
                 isFoldable: isCleanActivityEnabled.value && kind !== 'keep' && !isNew && !item.contains(hashTarget),
             };
         });
+
+        if (myLastNoteAt.value !== (lastNoteAt || null)) {
+            myLastNoteAt.value = lastNoteAt || null;
+        }
 
         const runs = foldRuns(entries);
         const signature = runs.map(run => `${items[run[0]].id}:${run.length}:${expandedFolds.value.has(items[run[0]].id)}`).join('|');
@@ -339,8 +369,11 @@
         const folded = new Set(runs.filter(run => !expandedFolds.value.has(items[run[0]].id)).flat().map(index => items[index]));
         items.forEach(item => item.classList.toggle(FOLDED_CLASS, folded.has(item)));
 
-        const threads = [...list.querySelectorAll('.discussion[data-discussion-resolvable="true"]:not([data-discussion-resolved="true"])')] as HTMLElement[];
-        if (threads.length !== openThreads.value.length || threads.some((thread, index) => thread !== openThreads.value[index])) {
+        placeHeadings(list, open.length);
+
+        const threads = open.map(threadOf);
+        const threadSignature = (items: OpenThread[]) => items.map(thread => `${thread.element.id}:${thread.last}`).join('|');
+        if (threadSignature(threads) !== threadSignature(openThreads.value) || threads.some((thread, index) => thread.element !== openThreads.value[index].element)) {
             openThreads.value = threads;
         }
 
@@ -350,40 +383,61 @@
         }
     }
 
-    // --- Summary bar ---
+    // --- Reports and checklist, read from GitLab's own widgets ---
 
-    function placeBar() {
-        // Below the sticky header, whose height is fixed
-        const header = document.querySelector('.merge-request-sticky-header-wrapper');
-        let bar = document.getElementById('glab-enhancer-summary-bar');
+    useWatchedElement('.mr-state-widget', (widget) => {
+        const container = widget.querySelector('.reports-widgets-container');
+        const found = [...(container?.children || [])].map((report) => {
+            const icon = report.querySelector('[data-testid^="status-"][data-testid$="-icon"]');
+            const name = reportName(icon?.getAttribute('aria-label') || '');
 
-        if (header && (!bar || bar.previousElementSibling !== header)) {
-            bar?.remove();
-            bar = document.createElement('div');
-            bar.id = 'glab-enhancer-summary-bar';
-            header.insertAdjacentElement('afterend', bar);
+            return name && icon
+                ? {
+                    name,
+                    detail: report.querySelector('[data-testid="widget-extension-top-level"]')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 100) || '',
+                    isPassing: icon.getAttribute('data-testid') === 'status-success-icon',
+                    element: report as HTMLElement,
+                }
+                : null;
+        }).filter(Boolean) as WidgetReport[];
+
+        const signature = (items: WidgetReport[]) => items.map(report => `${report.name}:${report.isPassing}:${report.detail}`).join('|');
+        if (signature(found) !== signature(reports.value)) {
+            reports.value = found;
+        }
+    });
+
+    useWatchedElement('.detail-page-description .description', (description) => {
+        const boxes = [...description.querySelectorAll('.md input.task-list-item-checkbox:not([data-inapplicable])')] as HTMLInputElement[];
+        const done = boxes.filter(box => box.checked).length;
+        const firstOpen = boxes.find(box => !box.checked)?.closest('li') || null;
+
+        if (done !== checklist.value.done || boxes.length !== checklist.value.total || firstOpen !== checklist.value.firstOpen) {
+            checklist.value = {
+                done,
+                total: boxes.length,
+                firstOpen,
+            };
+        }
+    });
+
+    // --- Panel ---
+
+    function placePanel() {
+        // At the top of the overview, so it leaves the other tabs alone
+        const description = document.querySelector('.issuable-discussion > .detail-page-description');
+        let panel = document.getElementById(PANEL_ID);
+
+        if (description && (!panel || panel.nextElementSibling !== description)) {
+            panel?.remove();
+            panel = document.createElement('div');
+            panel.id = PANEL_ID;
+            description.insertAdjacentElement('beforebegin', panel);
         }
 
-        if (barElement.value !== bar) {
-            barElement.value = bar;
+        if (panelElement.value !== panel) {
+            panelElement.value = panel;
         }
-    }
-
-    const nextIndex: Record<string, number> = {};
-
-    function scrollToNext(elements: HTMLElement[], key: string) {
-        nextIndex[key] = ((nextIndex[key] ?? -1) + 1) % elements.length;
-        elements[nextIndex[key]]?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-        });
-    }
-
-    function scrollToWidget() {
-        document.querySelector('.mr-state-widget')?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-        });
     }
 
     // --- Watching the page ---
@@ -397,7 +451,7 @@
 
     // The notes load after the page, and GitLab can replace the list when you change the activity filter
     useIntervalFn(() => {
-        placeBar();
+        placePanel();
 
         const list = document.querySelector('#notes-list');
         if (list !== observedList) {
@@ -419,6 +473,7 @@
 
     watch([
         isCleanActivityEnabled,
+        isThreadsFirstEnabled,
         isNewSinceVisitEnabled,
     ], () => {
         foldSignature = '';
@@ -451,8 +506,9 @@
         document.removeEventListener('visibilitychange', onVisibilityChange);
         window.removeEventListener('pagehide', rememberLastSeen);
         window.removeEventListener('hashchange', onHashChange);
-        document.querySelectorAll(`.${FOLD_CLASS}`).forEach(fold => fold.remove());
-        document.querySelectorAll(`.${FOLDED_CLASS}, .${NEW_CLASS}`).forEach(item => item.classList.remove(FOLDED_CLASS, NEW_CLASS));
-        document.getElementById('glab-enhancer-summary-bar')?.remove();
+        document.querySelectorAll(`.${FOLD_CLASS}, .${HEADING_CLASS}`).forEach(element => element.remove());
+        document.querySelectorAll(`.${FOLDED_CLASS}, .${NEW_CLASS}, .${OPEN_THREAD_CLASS}, .${THREADS_FIRST_CLASS}`)
+            .forEach(item => item.classList.remove(FOLDED_CLASS, NEW_CLASS, OPEN_THREAD_CLASS, THREADS_FIRST_CLASS));
+        document.getElementById(PANEL_ID)?.remove();
     });
 </script>

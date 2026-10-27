@@ -75,10 +75,11 @@ export function authorsLabel(names) {
 }
 
 /**
- * Groups consecutive foldable entries. A lone history entry is as small as its fold would be,
- * so it stays, but a lone resolved thread folds.
+ * Groups consecutive foldable entries of the same day. A lone history entry is as small as its fold
+ * would be, so it stays, but a lone resolved thread folds. Skipped entries, such as open threads
+ * shown elsewhere, neither join nor break a group.
  *
- * @param {Array<{ kind: string, isFoldable: boolean }>} entries
+ * @param {Array<{ kind: string, isFoldable: boolean, isSkipped?: boolean, day?: string }>} entries
  * @returns {number[][]} Indexes of the entries per fold
  */
 export function foldRuns(entries) {
@@ -95,6 +96,14 @@ export function foldRuns(entries) {
     };
 
     entries.forEach((entry, index) => {
+        if (entry.isSkipped) {
+            return;
+        }
+
+        if (run.length && entries[run[0]].day !== entry.day) {
+            close();
+        }
+
         if (entry.isFoldable) {
             run.push(index);
         } else {
@@ -104,6 +113,34 @@ export function foldRuns(entries) {
     close();
 
     return runs;
+}
+
+/**
+ * @param {Date} date
+ * @param {Date} now
+ * @returns {string} For example "Today", "Yesterday", "Monday" or "20 Oct"
+ */
+export function dayLabel(date, now) {
+    const startOfDay = (/** @type {Date} */ value) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+    const days = Math.round((startOfDay(now) - startOfDay(date)) / 86400000);
+
+    if (days === 0) {
+        return 'Today';
+    }
+
+    if (days === 1) {
+        return 'Yesterday';
+    }
+
+    if (days > 1 && days < 7) {
+        return date.toLocaleDateString('en-GB', { weekday: 'long' });
+    }
+
+    return date.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        ...(date.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
+    });
 }
 
 /**
@@ -118,6 +155,6 @@ export function approvalSummary(mergeRequest) {
         approved: !!mergeRequest.approved,
         given: mergeRequest.approvedBy?.nodes.length || 0,
         required: Math.max(0, ...general.map(rule => rule.approvalsRequired)),
-        missingRules: rules.filter(rule => rule.type === 'CODE_OWNER' && !rule.approved).map(rule => rule.name),
+        missingRules: [...new Set(rules.filter(rule => rule.type === 'CODE_OWNER' && !rule.approved).map(rule => rule.name))],
     };
 }

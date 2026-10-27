@@ -4,6 +4,7 @@ import {
     approvalSummary,
     authorsLabel,
     classifySystemNote,
+    dayLabel,
     describeFold,
     foldRuns,
 } from '../mergeRequestActivity.js';
@@ -53,11 +54,37 @@ test('leaves a single history entry unfolded', () => {
     assert.deepEqual(foldRuns([{ kind: 'push', isFoldable: true }, { kind: 'open', isFoldable: false }]), []);
 });
 
+test('folds per day and looks past skipped entries', () => {
+    const entries = [
+        { kind: 'push', isFoldable: true, day: 'mon' },
+        { kind: 'open', isFoldable: false, isSkipped: true, day: 'mon' },
+        { kind: 'push', isFoldable: true, day: 'mon' },
+        { kind: 'push', isFoldable: true, day: 'tue' },
+        { kind: 'checklist', isFoldable: true, day: 'tue' },
+    ];
+
+    assert.deepEqual(foldRuns(entries), [
+        [0, 2],
+        [3, 4],
+    ]);
+});
+
+test('names days relative to today', () => {
+    const now = new Date(2026, 9, 27, 15);
+
+    assert.equal(dayLabel(new Date(2026, 9, 27, 9), now), 'Today');
+    assert.equal(dayLabel(new Date(2026, 9, 26, 23), now), 'Yesterday');
+    assert.equal(dayLabel(new Date(2026, 9, 23, 9), now), 'Friday');
+    assert.equal(dayLabel(new Date(2026, 9, 20, 9), now), '20 Oct');
+    assert.equal(dayLabel(new Date(2025, 9, 20, 9), now), '20 Oct 2025');
+});
+
 test('sums up approvals from the approval rules', () => {
     const rules = [
         { name: 'All Members', type: 'ANY_APPROVER', approvalsRequired: 2, approved: false, approvedBy: { nodes: [] } },
         { name: 'Platform', type: 'CODE_OWNER', approvalsRequired: 1, approved: false, approvedBy: { nodes: [] } },
         { name: '/docs/', type: 'CODE_OWNER', approvalsRequired: 0, approved: true, approvedBy: { nodes: [] } },
+        { name: 'Platform', type: 'CODE_OWNER', approvalsRequired: 1, approved: false, approvedBy: { nodes: [] } },
     ];
 
     assert.deepEqual(approvalSummary({ approved: false, approvedBy: { nodes: [] }, approvalState: { rules } }), {
