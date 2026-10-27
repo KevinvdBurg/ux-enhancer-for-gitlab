@@ -28,6 +28,17 @@
             :iid="iid"
         />
 
+        <template v-if="isMergeRequestPage && iid && projectPath">
+            <MergeRequestDescription
+                :current-project-path="projectPath"
+                :iid="iid"
+            />
+
+            <MergeRequestWidgets />
+
+            <MergeRequestSidebar />
+        </template>
+
         <MergeRequestDetail
             v-if="isMergeRequestPage && iid"
 
@@ -76,9 +87,12 @@
     import CommandPanelEnhancer from './components/CommandPanelEnhancer.vue';
     import ContributorsSidebar from './components/ContributorsSidebar.vue';
     import IssueDetail from './components/IssueDetail.vue';
+    import MergeRequestDescription from './components/MergeRequestDescription.vue';
     import MergeRequestDetail from './components/MergeRequestDetail.vue';
     import MergeRequestOverview from './components/MergeRequestOverview.vue';
     import MergeRequestRows from './components/MergeRequestRows.vue';
+    import MergeRequestSidebar from './components/MergeRequestSidebar.vue';
+    import MergeRequestWidgets from './components/MergeRequestWidgets.vue';
     import MyUnresolvedThreads from './components/MyUnresolvedThreads.vue';
     import Preferences from './components/Preferences.vue';
     import QuickReactions from './components/QuickReactions.vue';
