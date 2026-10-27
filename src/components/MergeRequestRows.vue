@@ -247,11 +247,14 @@
     function decorate() {
         document.querySelector('.issuable-list')?.classList.toggle('glab-enhancer-compact', isCompactEnabled.value);
 
+        // Dimming only helps when something stands out, so a page without your turn stays as it is
+        const isDimming = isDimEnabled.value && [...statuses.value.values()].some(status => status.yourTurn);
+
         rows.value.forEach((row) => {
             const status = statuses.value.get(row.key);
             const isHovered = matchesHover(row.key);
 
-            row.element.classList.toggle('glab-enhancer-not-your-turn', isDimEnabled.value && !!status && !status.yourTurn);
+            row.element.classList.toggle('glab-enhancer-not-your-turn', isDimming && !!status && !status.yourTurn);
             row.element.classList.toggle('glab-enhancer-hover-match', isHovered);
             row.element.classList.toggle('glab-enhancer-hover-other', !!hoveredContributor.value && !isHovered);
             row.element.classList.toggle('glab-enhancer-filtered-out', !!categoryFilter.value && !!status && status.category !== categoryFilter.value);

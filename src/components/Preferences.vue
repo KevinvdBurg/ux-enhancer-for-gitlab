@@ -554,7 +554,7 @@
             },
             {
                 label: 'Dim MRs that are not your turn',
-                title: 'Merge requests without "Your turn" fade until you hover them',
+                title: 'When some merge requests on the page are your turn, the others fade until you hover them',
                 key: Preference.MR_DIM_NOT_YOUR_TURN,
                 icon: mdiEyeOffOutline,
                 isGitlabIcon: false,
