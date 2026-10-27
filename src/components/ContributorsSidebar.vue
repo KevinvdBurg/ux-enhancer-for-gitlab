@@ -91,17 +91,30 @@
                 </button>
             </div>
 
-            <div class="contributors-sidebar__legend">
-                <span
-                    v-for="category in visibleCategories"
-                    :key="category"
+            <div
+                v-if="categoryTotals.length > 1"
+                aria-label="Show only merge requests on this page that are"
+                class="contributors-sidebar__categories"
+                role="group"
+            >
+                <button
+                    v-for="item in categoryTotals"
+                    :key="item.category"
+                    :aria-pressed="categoryFilter === item.category"
+                    :class="{
+                        'contributors-sidebar__category--active': categoryFilter === item.category,
+                    }"
+                    class="contributors-sidebar__category"
+                    :title="categoryFilter === item.category ? 'Show all merge requests' : `Show only ${CATEGORY_META[item.category].short} merge requests on this page`"
+                    type="button"
+                    @click="categoryFilter = categoryFilter === item.category ? null : item.category"
                 >
                     <i
                         class="contributors-sidebar__dot"
-                        :style="{ background: CATEGORY_META[category].color }"
+                        :style="{ background: CATEGORY_META[item.category].color }"
                     />
-                    {{ CATEGORY_META[category].label }}
-                </span>
+                    {{ item.count }} {{ CATEGORY_META[item.category].short }}
+                </button>
             </div>
 
             <div
@@ -134,90 +147,104 @@
                 <div
                     v-for="summary in summaries"
                     :key="summary.user.id"
-                    class="contributors-sidebar__entry"
-                >
-                <button
-                    :aria-pressed="summary.user.username === selectedUsername"
                     :class="{
-                        'contributors-sidebar__row--active': summary.user.username === selectedUsername,
+                        'contributors-sidebar__entry--active': summary.user.username === selectedUsername,
                     }"
-                    class="contributors-sidebar__row"
-                    :title="summary.user.username === selectedUsername ? 'Clear filter' : `Show only merge requests ${mode === 'reviewers' ? 'reviewed by' : 'by'} ${summary.user.name}`"
-                    type="button"
-                    @click="toggleFilter(summary.user.username)"
+                    class="contributors-sidebar__entry"
+                    @mouseenter="hoveredContributor = { username: summary.user.username, mode }"
+                    @mouseleave="hoveredContributor = null"
                 >
-                    <img
-                        alt=""
-                        class="contributors-sidebar__avatar"
-                        :src="summary.user.avatar_url"
+                    <button
+                        :aria-pressed="summary.user.username === selectedUsername"
+                        class="contributors-sidebar__row"
+                        :title="summary.user.username === selectedUsername ? 'Clear filter' : `Show only merge requests ${mode === 'reviewers' ? 'reviewed by' : 'by'} ${summary.user.name}`"
+                        type="button"
+                        @click="toggleFilter(summary.user.username)"
                     >
+                        <img
+                            alt=""
+                            class="contributors-sidebar__avatar"
+                            :src="summary.user.avatar_url"
+                        >
 
-                    <span class="contributors-sidebar__details">
-                        <span class="contributors-sidebar__name">
-                            <span>{{ summary.user.name }}</span>
+                        <span class="contributors-sidebar__details">
+                            <span class="contributors-sidebar__name">
+                                <span>{{ summary.user.name }}</span>
 
-                            <SvgIcon
-                                v-if="summary.user.username === selectedUsername"
-                                class="contributors-sidebar__clear"
-                                :path="mdiClose"
-                            />
+                                <SvgIcon
+                                    v-if="summary.user.username === selectedUsername"
+                                    class="contributors-sidebar__clear"
+                                    :path="mdiClose"
+                                />
+                            </span>
+
+                            <span
+                                class="contributors-sidebar__bar"
+                                :style="{ width: `${summary.total / maxTotal * 100}%` }"
+                            >
+                                <span
+                                    v-for="category in CONTRIBUTOR_CATEGORIES.filter(key => summary.counts[key])"
+                                    :key="category"
+                                    :style="{
+                                        background: CATEGORY_META[category].color,
+                                        flexGrow: summary.counts[category],
+                                    }"
+                                />
+                            </span>
                         </span>
 
-                        <span class="contributors-sidebar__bar">
-                            <span
-                                v-for="category in CONTRIBUTOR_CATEGORIES.filter(key => summary.counts[key])"
-                                :key="category"
-                                :style="{
-                                    background: CATEGORY_META[category].color,
-                                    flexGrow: summary.counts[category],
-                                }"
-                            />
-                        </span>
+                        <span class="contributors-sidebar__count">{{ summary.total }}</span>
+                    </button>
 
-                        <span class="contributors-sidebar__meta">
+                    <div class="contributors-sidebar__meta">
+                        <template
+                            v-for="category in CONTRIBUTOR_CATEGORIES.filter(key => summary.counts[key])"
+                            :key="category"
+                        >
+                            <button
+                                v-if="category === 'blocked' && summary.blocked?.length"
+                                :aria-expanded="expandedBlocked.has(summary.user.id)"
+                                class="contributors-sidebar__blocked-toggle"
+                                :title="expandedBlocked.has(summary.user.id) ? 'Hide reasons' : 'Show why they are blocked'"
+                                type="button"
+                                @click="toggleBlocked(summary.user.id)"
+                            >
+                                <i
+                                    class="contributors-sidebar__dot"
+                                    :style="{ background: CATEGORY_META[category].color }"
+                                />
+                                {{ summary.counts[category] }} {{ CATEGORY_META[category].short }}
+
+                                <SvgIcon :path="expandedBlocked.has(summary.user.id) ? mdiChevronUp : mdiChevronDown" />
+                            </button>
+
                             <span
-                                v-for="category in CONTRIBUTOR_CATEGORIES.filter(key => summary.counts[key])"
-                                :key="category"
+                                v-else
                                 :title="CATEGORY_META[category].label"
                             >
                                 <i
                                     class="contributors-sidebar__dot"
                                     :style="{ background: CATEGORY_META[category].color }"
                                 />
-                                {{ summary.counts[category] }}
+                                {{ summary.counts[category] }} {{ CATEGORY_META[category].short }}
                             </span>
+                        </template>
 
-                            <span
-                                v-if="isOpenState && summary.idlest && daysSince(summary.idlest.updatedAt) >= 1"
-                                :class="{
-                                    'contributors-sidebar__idle--long': daysSince(summary.idlest.updatedAt) >= LONG_IDLE_DAYS,
-                                }"
-                                class="contributors-sidebar__idle"
-                                :title="`${summary.idlest.reference} ${summary.idlest.title} has had no activity for ${formatIdle(daysSince(summary.idlest.updatedAt)).replace(' idle', '')}`"
-                            >
-                                <SvgIcon :path="mdiClockOutline" />
-                                {{ formatIdle(daysSince(summary.idlest.updatedAt)) }}
-                            </span>
+                        <span
+                            v-if="isOpenState && summary.idlest && daysSince(summary.idlest.updatedAt) >= 1"
+                            :class="{
+                                'contributors-sidebar__idle--long': daysSince(summary.idlest.updatedAt) >= LONG_IDLE_DAYS,
+                            }"
+                            class="contributors-sidebar__idle"
+                            :title="`${summary.idlest.reference} ${summary.idlest.title} has had no activity for ${daysSince(summary.idlest.updatedAt)} days`"
+                        >
+                            <SvgIcon :path="mdiClockOutline" />
+                            {{ formatIdle(daysSince(summary.idlest.updatedAt)) }}
                         </span>
-                    </span>
-
-                    <span class="contributors-sidebar__count">{{ summary.total }}</span>
-                </button>
-
-                <template v-if="summary.blocked?.length">
-                    <button
-                        :aria-expanded="expandedBlocked.has(summary.user.id)"
-                        class="contributors-sidebar__blocked-toggle"
-                        type="button"
-                        @click="toggleBlocked(summary.user.id)"
-                    >
-                        <SvgIcon :path="expandedBlocked.has(summary.user.id) ? mdiChevronDown : mdiChevronRight" />
-
-                        Why {{ summary.blocked.length }} blocked
-                    </button>
+                    </div>
 
                     <ul
-                        v-if="expandedBlocked.has(summary.user.id)"
+                        v-if="summary.blocked?.length && expandedBlocked.has(summary.user.id)"
                         class="contributors-sidebar__blocked"
                     >
                         <li
@@ -243,7 +270,6 @@
                             </a>
                         </li>
                     </ul>
-                </template>
                 </div>
             </div>
 
@@ -265,6 +291,7 @@
         mdiAccountGroupOutline,
         mdiChevronDown,
         mdiChevronRight,
+        mdiChevronUp,
         mdiClockOutline,
         mdiClose,
         mdiRefresh,
@@ -292,11 +319,15 @@
     import { APP_NAMESPACE } from '../constants';
     import { Preference } from '../enums';
     import { useExtensionStore } from '../store';
-    import { usePageDetectionStore } from '../stores';
+    import {
+        useMergeRequestRowsStore,
+        usePageDetectionStore,
+    } from '../stores';
     import {
         activeContributor,
         CONTRIBUTOR_CATEGORIES,
         contributorApiParams,
+        contributorCategory,
         contributorFilterUrl,
         daysSince,
         excludedApprovers,
@@ -305,6 +336,7 @@
         reviewedByMeUrl,
         summarizeContributors,
     } from '../utils/mergeRequestContributors';
+    import { CATEGORY_META } from '../utils/mergeRequestCategories';
     import { navigateMergeRequestList } from '../utils/mergeRequestListApp';
     import SvgIcon from './SvgIcon.vue';
 
@@ -329,33 +361,6 @@
     const MIN_DOCKED_WIDTH = 220;
     const COLLAPSED_WIDTH = 72;
     const GAP = 16;
-
-    const CATEGORY_META: Record<string, { label: string, color: string }> = {
-        ready: {
-            label: 'Ready to merge',
-            color: 'var(--gl-status-success-icon-color, #108548)',
-        },
-        review: {
-            label: 'Waiting for review',
-            color: 'var(--gl-status-info-icon-color, #1f75cb)',
-        },
-        blocked: {
-            label: 'Blocked',
-            color: 'var(--gl-status-warning-icon-color, #c17d10)',
-        },
-        draft: {
-            label: 'Draft',
-            color: 'var(--gl-status-neutral-icon-color, #737278)',
-        },
-        merged: {
-            label: 'Merged',
-            color: 'var(--gl-status-brand-icon-color, #7b58cf)',
-        },
-        closed: {
-            label: 'Closed',
-            color: 'var(--gl-status-danger-icon-color, #dd2b0e)',
-        },
-    };
 
     const reviewedOptions: Array<{ value: ReviewedMode, label: string, title: string }> = [
         {
@@ -387,6 +392,10 @@
     } = useExtensionStore();
     const { gitlabUsername } = storeToRefs(useExtensionStore());
     const { search } = storeToRefs(usePageDetectionStore());
+    const {
+        hoveredContributor,
+        categoryFilter,
+    } = storeToRefs(useMergeRequestRowsStore());
 
     const mode = computed<ContributorMode>({
         get: () => getSetting(Preference.MR_CONTRIBUTORS_SIDEBAR_MODE, 'authors') as ContributorMode,
@@ -401,6 +410,7 @@
     const summaries: Ref<ContributorSummary[]> = shallowRef([]);
     const total = ref(0);
     const fetchedCount = ref(0);
+    const categoryTotals: Ref<Array<{ category: string, count: number }>> = shallowRef([]);
     const isLoading = ref(false);
     const isStale = ref(false);
     const error = ref('');
@@ -423,17 +433,8 @@
     });
     const reviewedFilter = computed(() => gitlabUsername.value ? reviewedByMeFilter(href.value, gitlabUsername.value) : null);
 
-    const visibleCategories = computed(() => {
-        if (pageState.value === 'all') {
-            return CONTRIBUTOR_CATEGORIES;
-        }
-
-        if (pageState.value === 'opened') {
-            return CONTRIBUTOR_CATEGORIES.filter(category => category !== 'merged' && category !== 'closed');
-        }
-
-        return [pageState.value];
-    });
+    // Bars share one scale, so the busiest contributor's bar is the widest
+    const maxTotal = computed(() => Math.max(1, ...summaries.value.map(summary => summary.total)));
 
     let lastRequestKey = '';
     let requestId = 0;
@@ -460,6 +461,7 @@
                 summaries: summaries.value,
                 total: total.value,
                 fetchedCount: fetchedCount.value,
+                categoryTotals: categoryTotals.value = [],
             } = JSON.parse(cached));
         }
         isStale.value = !cached;
@@ -482,6 +484,12 @@
             const approvedCount = approvedResults.reduce((sum, approved) => sum + approved.total, 0);
 
             summaries.value = summarizeContributors(mergeRequests, mode.value);
+            categoryTotals.value = CONTRIBUTOR_CATEGORIES
+                .map(category => ({
+                    category,
+                    count: mergeRequests.filter(mergeRequest => contributorCategory(mergeRequest) === category).length,
+                }))
+                .filter(item => item.count);
             total.value = Math.max(result.total - approvedCount, mergeRequests.length);
             fetchedCount.value = mergeRequests.length;
 
@@ -489,6 +497,7 @@
                 summaries: summaries.value,
                 total: total.value,
                 fetchedCount: fetchedCount.value,
+                categoryTotals: categoryTotals.value,
             }));
         } catch (err) {
             if (currentRequestId === requestId) {
@@ -639,6 +648,7 @@
     const debouncedLoad = debounce(() => load(), 100);
 
     watch(href, () => {
+        categoryFilter.value = null;
         debouncedLoad();
         scheduleLayout();
     });
@@ -735,24 +745,7 @@
             border-color: var(--gl-status-info-icon-color, #1f75cb);
             background: var(--gl-background-color-strong, #ececef);
 
-            .contributors-sidebar__idle {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.125rem;
-        margin-left: auto;
-
-        svg {
-            width: 0.75rem;
-            height: 0.75rem;
-        }
-
-        &--long {
-            color: var(--gl-status-warning-icon-color, #c17d10);
-            font-weight: 600;
-        }
-    }
-
-    .contributors-sidebar__count {
+            .contributors-sidebar__count {
                 background: var(--gl-background-color-default, #fff);
             }
         }
@@ -782,13 +775,35 @@
         }
     }
 
-    .contributors-sidebar__legend {
+    .contributors-sidebar__categories {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem 0.75rem;
-        padding: 0.5rem 0.75rem;
-        color: var(--gl-text-color-subtle, #626168);
+        gap: 0.25rem;
+        padding: 0.5rem 0.75rem 0;
         font-size: 0.75rem;
+    }
+
+    .contributors-sidebar__category {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        padding: 0.125rem 0.5rem;
+        border: 1px solid var(--gl-border-color-default, #dcdcde);
+        border-radius: 1rem;
+        background: transparent;
+        color: var(--gl-text-color-subtle, #626168);
+
+        &:hover {
+            background: var(--gl-background-color-subtle, #fbfafd);
+        }
+
+        &--active,
+        &--active:hover {
+            border-color: var(--gl-status-info-icon-color, #1f75cb);
+            background: var(--gl-background-color-strong, #ececef);
+            color: var(--gl-text-color-default, #3a383f);
+            font-weight: 600;
+        }
     }
 
     .contributors-sidebar__dot {
@@ -802,7 +817,7 @@
     .contributors-sidebar__list {
         flex: 1 1 auto;
         overflow-y: auto;
-        padding: 0 0.25rem 0.25rem;
+        padding: 0.5rem 0.25rem 0.25rem;
         transition: opacity 0.15s ease-in-out;
 
         &--stale {
@@ -825,17 +840,9 @@
         color: var(--gl-text-color-subtle, #626168);
     }
 
-    .contributors-sidebar__row {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.5rem;
-        width: 100%;
-        padding: 0.5rem;
-        border: 0;
+    .contributors-sidebar__entry {
+        padding-bottom: 0.375rem;
         border-radius: 0.375rem;
-        background: transparent;
-        color: inherit;
-        text-align: left;
 
         &:hover {
             background: var(--gl-background-color-subtle, #fbfafd);
@@ -847,21 +854,64 @@
         }
     }
 
-    .contributors-sidebar__blocked-toggle {
+    .contributors-sidebar__row {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
-        margin: -0.375rem 0 0.25rem 2.25rem;
-        padding: 0.125rem 0.25rem;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.375rem 0.5rem 0.25rem;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+    }
+
+    .contributors-sidebar__meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.125rem 0.625rem;
+        padding: 0 0.5rem 0 2.5rem;
+        color: var(--gl-text-color-subtle, #626168);
+        font-size: 0.75rem;
+    }
+
+    .contributors-sidebar__blocked-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        margin: 0 -0.25rem;
+        padding: 0 0.25rem;
         border: 0;
         border-radius: 0.25rem;
         background: transparent;
         color: var(--gl-status-warning-icon-color, #c17d10);
-        font-size: 0.75rem;
         font-weight: 600;
 
+        svg {
+            width: 0.875rem;
+            height: 0.875rem;
+        }
+
         &:hover {
-            background: var(--gl-background-color-subtle, #fbfafd);
+            background: var(--gl-background-color-strong, #ececef);
+        }
+    }
+
+    .contributors-sidebar__idle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        margin-left: auto;
+
+        svg {
+            width: 0.75rem;
+            height: 0.75rem;
+        }
+
+        &--long {
+            color: var(--gl-status-warning-icon-color, #c17d10);
+            font-weight: 600;
         }
     }
 
@@ -869,7 +919,7 @@
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
-        margin: 0 0 0.5rem 2.5rem;
+        margin: 0.375rem 0.5rem 0 2.5rem;
         padding: 0;
         list-style: none;
         font-size: 0.75rem;
@@ -921,7 +971,7 @@
         display: flex;
         flex: 1 1 auto;
         flex-direction: column;
-        gap: 0.25rem;
+        gap: 0.375rem;
         min-width: 0;
     }
 
@@ -946,6 +996,7 @@
     .contributors-sidebar__bar {
         display: flex;
         gap: 2px;
+        min-width: 0.75rem;
         height: 0.375rem;
         overflow: hidden;
         border-radius: 0.25rem;
@@ -953,14 +1004,6 @@
         > span {
             flex-basis: 0;
         }
-    }
-
-    .contributors-sidebar__meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0 0.5rem;
-        color: var(--gl-text-color-subtle, #626168);
-        font-size: 0.75rem;
     }
 
     .contributors-sidebar__count {

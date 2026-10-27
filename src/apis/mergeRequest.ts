@@ -71,3 +71,61 @@ export async function countMergeRequests(endpoint: string, params: URLSearchPara
 
     return parseInt(response.headers.get('x-total') || '0', 10);
 }
+
+/**
+ * Fetches the listed merge requests of one project, up to 100 at a time.
+ */
+export async function fetchMergeRequestsByIids(projectPath: string, iids: string[], extraParams: Record<string, string> = {}) {
+    const query = new URLSearchParams({
+        is_custom: '1',
+        per_page: '100',
+        state: 'all',
+        ...extraParams,
+    });
+    iids.forEach(iid => query.append('iids[]', iid));
+
+    const response = await fetch(`/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests?${query.toString()}`);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+    }
+
+    return response.json() as Promise<IMergeRequestListItem[]>;
+}
+
+/**
+ * Counts unresolved threads of the listed merge requests of one project in a single request,
+ * keyed by iid. Resolves to null when GitLab cannot answer it.
+ */
+export async function fetchUnresolvedThreadCounts(projectPath: string, iids: string[], csrfToken: string) {
+    try {
+        const response = await fetch('/api/graphql?is_custom=1', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({
+                query: `query($fullPath: ID!, $iids: [String!]) {
+                    project(fullPath: $fullPath) {
+                        mergeRequests(iids: $iids, first: 100) {
+                            nodes { iid resolvableDiscussionsCount resolvedDiscussionsCount }
+                        }
+                    }
+                }`,
+                variables: {
+                    fullPath: projectPath,
+                    iids,
+                },
+            }),
+        });
+        const { data } = await response.json();
+        const nodes: Array<{ iid: string, resolvableDiscussionsCount: number | null, resolvedDiscussionsCount: number | null }> | undefined = data?.project?.mergeRequests?.nodes;
+        if (!nodes) {
+            return null;
+        }
+
+        return new Map(nodes.map(node => [node.iid, (node.resolvableDiscussionsCount || 0) - (node.resolvedDiscussionsCount || 0)]));
+    } catch {
+        return null;
+    }
+}

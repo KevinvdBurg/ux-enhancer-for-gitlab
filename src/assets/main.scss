@@ -1,3 +1,91 @@
+li.glab-enhancer-mine {
+    box-shadow: inset 3px 0 0 var(--gl-color-purple-500, #7b58cf);
+    background-color: rgba(123, 88, 207, 0.06);
+}
+
+// --- Merge request rows ---
+
+li.glab-enhancer-row-status {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-right: 0 !important;
+
+    &:empty {
+        display: none;
+    }
+}
+
+.glab-enhancer-your-turn-badge {
+    background-color: var(--gl-badge-tier-background-color-default, #e1d8f9) !important;
+    color: var(--gl-badge-tier-text-color-default, #5943b6) !important;
+}
+
+li.merge-request {
+    transition: opacity 0.15s ease-in-out;
+
+    &.glab-enhancer-not-your-turn:not(.merge-request-draft) {
+        opacity: 0.6;
+    }
+
+    &.glab-enhancer-hover-other {
+        opacity: 0.35;
+    }
+
+    &.glab-enhancer-hover-match {
+        opacity: 1;
+        box-shadow: inset 3px 0 0 var(--gl-status-info-icon-color, #1f75cb);
+    }
+
+    &.glab-enhancer-not-your-turn:hover,
+    &.glab-enhancer-hover-other:hover {
+        opacity: 1;
+    }
+
+    &.glab-enhancer-filtered-out {
+        display: none !important;
+    }
+}
+
+.glab-enhancer-filter-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem 0.25rem 1rem;
+    border-bottom: 1px solid var(--gl-border-color-default, #dcdcde);
+    background: var(--gl-background-color-subtle, #fbfafd);
+    font-size: 0.875rem;
+}
+
+// Opt-in: restyles GitLab's own rows, so a GitLab update can undo parts of it
+.issuable-list.glab-enhancer-compact {
+    > li.merge-request {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+        row-gap: 0.25rem !important;
+    }
+
+    [data-testid="task-status"][data-glab-short] {
+        font-size: 0 !important;
+
+        &::before {
+            content: "☑ " attr(data-glab-short);
+            color: var(--gl-text-color-subtle, #626168);
+            font-size: 0.75rem;
+        }
+    }
+
+    .issuable-meta .gl-avatar-link + .gl-avatar-link,
+    .issuable-meta .issuable-reviewers a + a {
+        margin-left: -0.5rem;
+    }
+
+    .issuable-meta .gl-avatar {
+        box-shadow: 0 0 0 2px var(--gl-background-color-default, #fff);
+    }
+}
+
 li.merge-request-draft {
     opacity: 0.3;
     transition: opacity 0.3s ease-in-out;

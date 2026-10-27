@@ -16,6 +16,11 @@
             :is-merge-request="isMergeRequestPage"
         />
 
+        <MergeRequestRows
+            v-if="isMrIssueOverviewReady && isMergeRequestPage && !iid && projectPath"
+            :current-project-path="projectPath"
+        />
+
         <MergeRequestDetail
             v-if="isMergeRequestPage && iid"
 
@@ -65,6 +70,7 @@
     import ContributorsSidebar from './components/ContributorsSidebar.vue';
     import IssueDetail from './components/IssueDetail.vue';
     import MergeRequestDetail from './components/MergeRequestDetail.vue';
+    import MergeRequestRows from './components/MergeRequestRows.vue';
     import MyUnresolvedThreads from './components/MyUnresolvedThreads.vue';
     import Preferences from './components/Preferences.vue';
     import QuickReactions from './components/QuickReactions.vue';
@@ -72,7 +78,6 @@
     import StarIssueBoards from './components/StarIssueBoards.vue';
     import TodoList from './components/TodoList.vue';
     import { useDimDraftMrs } from './composables/useDimDraftMrs';
-    import { useHighlightMyApprovals } from './composables/useHighlightMyApprovals';
     import { useHighlightMyIssuesMrs } from './composables/useHighlightMyIssuesMrs';
     import { useMitt } from './composables/useMitt';
     import { usePersistentFilters } from './composables/usePersistentFilters';
@@ -94,7 +99,6 @@
 
     const { getSetting } = useExtensionStore();
     const {
-        gitlabUserId,
         gitlabUsername,
         isReady,
     } = storeToRefs(useExtensionStore());
@@ -130,7 +134,6 @@
         dim: dimDraftMrs,
         dimNow: dimDraftMrsNow,
     } = useDimDraftMrs();
-    const { highlight: highlightMyApprovals } = useHighlightMyApprovals();
     const {
         render: renderDraftMrsTab,
         renderNow: renderDraftMrsTabNow,
@@ -171,8 +174,6 @@
                 renderDraftMrsTab();
                 renderEpicAssignees();
 
-                highlightMyApprovals(gitlabUserId.value);
-
                 checkIsMrIssueOverviewReady();
             }
         });
@@ -197,7 +198,6 @@
             highlightMyIssuesMrsNow(gitlabUsername.value);
             dimDraftMrsNow();
             renderDraftMrsTabNow();
-            highlightMyApprovals(gitlabUserId.value);
             checkIsMrIssueOverviewReady();
             emit(MittEventKey.PAGE_CONTENT_CHANGED);
         };

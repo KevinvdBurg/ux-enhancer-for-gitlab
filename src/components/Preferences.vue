@@ -205,6 +205,7 @@
         mdiCommentTextMultipleOutline,
         mdiDeleteOutline,
         mdiEmoticonOutline,
+        mdiEyeOffOutline,
         mdiFlagOutline,
         mdiFormTextbox,
         mdiGithub,
@@ -215,6 +216,8 @@
         mdiScriptTextOutline,
         mdiStarOutline,
         mdiTabPlus,
+        mdiTagOutline,
+        mdiViewSequentialOutline,
     } from '@mdi/js';
     import { onClickOutside } from '@vueuse/core';
     import showdown from 'showdown'; //eslint-disable-line
@@ -470,7 +473,7 @@
         'Merge Requests': [
             {
                 label: 'Highlight my MRs',
-                title: 'Highlighted with purple dashed border',
+                title: 'Marked with a purple edge',
                 key: Preference.MR_HIGHLIGHT_MINE,
                 icon: mdiAccountCircleOutline,
                 isGitlabIcon: false,
@@ -539,6 +542,33 @@
                 isGitlabIcon: false,
                 iconClassName: '',
                 defaultValue: true,
+            },
+            {
+                label: 'Show status and "Your turn" in the list',
+                title: 'One chip per merge request (ready, in review, blocked, draft), and "Your turn" when it waits on you',
+                key: Preference.MR_ROW_STATUS,
+                icon: mdiTagOutline,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: true,
+            },
+            {
+                label: 'Dim MRs that are not your turn',
+                title: 'Merge requests without "Your turn" fade until you hover them',
+                key: Preference.MR_DIM_NOT_YOUR_TURN,
+                icon: mdiEyeOffOutline,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: false,
+            },
+            {
+                label: 'Compact merge request list',
+                title: 'Tighter rows, short checklist progress and overlapping avatars. Restyles GitLab itself, so a GitLab update can undo parts of it.',
+                key: Preference.MR_COMPACT_LIST,
+                icon: mdiViewSequentialOutline,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: false,
             },
             {
                 label: 'Separate drafts into their own tab',

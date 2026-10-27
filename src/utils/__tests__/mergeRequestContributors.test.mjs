@@ -36,10 +36,18 @@ test('leaves out the filter of the current mode', () => {
     assert.equal(contributorApiParams(href).toString(), 'state=merged&author_username=kevin&reviewer_username=tom');
 });
 
+test('falls back to conflicts and threads while GitLab has not checked the merge status', () => {
+    assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'unchecked', blocking_discussions_resolved: false }), 'blocked');
+    assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'checking', has_conflicts: true }), 'blocked');
+    assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'unchecked', blocking_discussions_resolved: true }), 'review');
+    assert.deepEqual(blockedReasons({ detailed_merge_status: 'unchecked', blocking_discussions_resolved: false }), ['Unresolved threads']);
+});
+
 test('categorizes merge requests by merge status', () => {
     assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'mergeable' }), 'ready');
     assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'not_approved' }), 'review');
     assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'checking' }), 'review');
+    assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'ci_still_running' }), 'running');
     assert.equal(contributorCategory({ state: 'opened', detailed_merge_status: 'conflict' }), 'blocked');
     assert.equal(contributorCategory({ state: 'opened', draft: true, detailed_merge_status: 'conflict' }), 'draft');
     assert.equal(contributorCategory({ state: 'merged', detailed_merge_status: 'mergeable' }), 'merged');
@@ -83,9 +91,9 @@ test('summarizes authors and reviewers, busiest first', () => {
 
 test('describes how long a merge request has been idle', () => {
     assert.equal(daysSince('2026-10-20T10:00:00Z', Date.parse('2026-10-26T09:00:00Z')), 5);
-    assert.equal(formatIdle(1), '1 day idle');
-    assert.equal(formatIdle(20), '20 days idle');
-    assert.equal(formatIdle(75), '2 months idle');
+    assert.equal(formatIdle(1), '1d idle');
+    assert.equal(formatIdle(20), '20d idle');
+    assert.equal(formatIdle(75), '2mo idle');
 });
 
 test('toggles the contributor filter and drops pagination', () => {

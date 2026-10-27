@@ -1,10 +1,10 @@
 /**
  * @typedef {'authors' | 'reviewers'} ContributorMode
- * @typedef {'ready' | 'review' | 'blocked' | 'draft' | 'merged' | 'closed'} ContributorCategory
+ * @typedef {'ready' | 'running' | 'review' | 'blocked' | 'draft' | 'merged' | 'closed'} ContributorCategory
  */
 
 /** @type {ContributorCategory[]} */
-export const CONTRIBUTOR_CATEGORIES = ['ready', 'review', 'blocked', 'draft', 'merged', 'closed'];
+export const CONTRIBUTOR_CATEGORIES = ['ready', 'running', 'review', 'blocked', 'draft', 'merged', 'closed'];
 
 const FILTER_KEY_BY_MODE = {
     authors: 'author_username',
@@ -63,6 +63,9 @@ const BLOCKED_REASONS = {
     title_regex: 'Title does not match the required format',
 };
 const BLOCKED_STATUSES = Object.keys(BLOCKED_REASONS);
+
+// GitLab works these out when someone opens the merge request, so until then they say nothing
+const UNCHECKED_STATUSES = ['unchecked', 'checking', 'preparing', 'approvals_syncing'];
 
 /**
  * Translates the filters of a merge request list page into REST API query params.
@@ -175,7 +178,7 @@ export function reviewedByMeUrl(href, username, filter) {
 }
 
 /**
- * @param {{ state?: string, draft?: boolean, detailed_merge_status?: string }} mergeRequest
+ * @param {{ state?: string, draft?: boolean, detailed_merge_status?: string, has_conflicts?: boolean, blocking_discussions_resolved?: boolean }} mergeRequest
  * @returns {ContributorCategory}
  */
 export function contributorCategory(mergeRequest) {
@@ -197,7 +200,15 @@ export function contributorCategory(mergeRequest) {
         return 'ready';
     }
 
+    if (status === 'ci_still_running') {
+        return 'running';
+    }
+
     if (BLOCKED_STATUSES.includes(status)) {
+        return 'blocked';
+    }
+
+    if (UNCHECKED_STATUSES.includes(status) && (mergeRequest.has_conflicts || mergeRequest.blocking_discussions_resolved === false)) {
         return 'blocked';
     }
 
@@ -293,10 +304,10 @@ export function daysSince(date, now = Date.now()) {
  */
 export function formatIdle(days) {
     if (days >= 60) {
-        return `${Math.floor(days / 30)} months idle`;
+        return `${Math.floor(days / 30)}mo idle`;
     }
 
-    return `${days} ${days === 1 ? 'day' : 'days'} idle`;
+    return `${days}d idle`;
 }
 
 /**

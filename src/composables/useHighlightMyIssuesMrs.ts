@@ -5,6 +5,9 @@ import { Preference } from '../enums';
 import { useExtensionStore } from '../store';
 import { usePageDetectionStore } from '../stores';
 
+// Marks list rows you authored with an accent along their edge, styled in main.scss
+const MINE_CLASS = 'glab-enhancer-mine';
+
 export function useHighlightMyIssuesMrs() {
     const { getSetting } = useExtensionStore();
     const {
@@ -43,13 +46,7 @@ export function useHighlightMyIssuesMrs() {
                     `.issuable-meta a.gl-avatar-link[href$="/${username}"]`,
                 ].join(', '));
                 avatarElements.forEach((element) => {
-                    const parentElement = element.closest('li.issue') as HTMLElement | null;
-
-                    if (parentElement?.style) {
-                        parentElement.style.border = '2px dashed #5943b6';
-                        parentElement.style.borderRadius = '0.25rem';
-                        parentElement.style.margin = '0.5rem';
-                    }
+                    element.closest('li.issue')?.classList.add(MINE_CLASS);
                 });
             }
         }
@@ -60,13 +57,7 @@ export function useHighlightMyIssuesMrs() {
                 `li.merge-request .issuable-authored a.author-link[href$="/${username}"]`,
             ].join(', '));
             avatarElements.forEach((element) => {
-                const parentElement = element.closest('li.merge-request') as HTMLElement | null;
-
-                if (parentElement?.style) {
-                    parentElement.style.border = '2px dashed #5943b6';
-                    parentElement.style.borderRadius = '0.25rem';
-                    parentElement.style.margin = '0.5rem';
-                }
+                element.closest('li.merge-request')?.classList.add(MINE_CLASS);
             });
         }
     }

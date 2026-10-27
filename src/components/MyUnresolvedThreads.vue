@@ -10,43 +10,26 @@
                     :to="`#${teleportId}`"
                 >
                     <li
-                        v-if="isShowMyUnresolvedWithResponsesEnabled && myUnresolvedThreadsWithResponseCount.get(teleportId)"
-                        class="has-tooltip gl-display-none gl-sm-display-block md badge badge-pill gl-badge badge-info"
+                        v-if="myBadges.get(teleportId)"
+                        :class="myBadges.get(teleportId)!.hasResponses ? 'badge-info' : 'badge-neutral'"
+                        class="has-tooltip gl-display-none gl-sm-display-block md badge badge-pill gl-badge"
                         :style="{
-                            color: 'var(--gl-badge-info-text-color-default) !important',
+                            color: `var(--gl-badge-${myBadges.get(teleportId)!.hasResponses ? 'info' : 'neutral'}-text-color-default) !important`,
                             listStyle: 'none',
                         }"
-                        title="My unresolved threads with responses"
+                        :title="myBadges.get(teleportId)!.title"
                     >
                         <SvgIcon
                             class="gl-icon s16 gl-mr-2"
-                            :path="mdiCommentTextMultipleOutline"
+                            :path="myBadges.get(teleportId)!.hasResponses ? mdiCommentTextMultipleOutline : mdiCommentAccountOutline"
                             style="fill: currentColor;"
                         />
 
-                        <span class="gl-font-weight-bold">{{ myUnresolvedThreadsWithResponseCount.get(teleportId) || 0 }}</span>
+                        <span class="gl-font-weight-bold">{{ myBadges.get(teleportId)!.count }}</span>
                     </li>
 
                     <li
-                        v-if="myUnresolvedThreadsCount.get(teleportId)"
-                        class="has-tooltip gl-display-none gl-sm-display-block md badge badge-pill gl-badge badge-danger"
-                        :style="{
-                            color: 'var(--gl-badge-danger-text-color-default) !important',
-                            listStyle: 'none',
-                        }"
-                        title="My unresolved threads"
-                    >
-                        <SvgIcon
-                            class="gl-icon s16 gl-mr-2"
-                            :path="mdiCommentAccountOutline"
-                            style="fill: currentColor;"
-                        />
-
-                        <span class="gl-font-weight-bold">{{ myUnresolvedThreadsCount.get(teleportId) }}</span>
-                    </li>
-
-                    <li
-                        v-if="unresolvedThreadsCount.get(teleportId)"
+                        v-if="unresolvedThreadsCount.get(teleportId) && !nativeThreadStatusIds.has(teleportId)"
                         class="has-tooltip gl-display-none gl-sm-display-block gl-mr-3 md badge badge-pill gl-badge badge-warning"
                         :style="{
                             color: 'var(--gl-badge-warning-text-color-default) !important',
@@ -77,7 +60,6 @@
         mdiCommentAlertOutline,
         mdiCommentTextMultipleOutline,
     } from '@mdi/js';
-    import { useLocalStorage } from '@vueuse/core';
     import { debounce } from 'lodash-es';
     import {
         computed,
@@ -88,9 +70,13 @@
         shallowRef,
         type ShallowRef,
     } from 'vue';
+    import { fetchUnresolvedThreadCounts } from '../apis/mergeRequest';
     import { useFetchPaging } from '../composables/useFetchPaging';
     import { useMitt } from '../composables/useMitt';
-    import { APP_NAMESPACE } from '../constants';
+    import {
+        type ThreadCounts,
+        useThreadCountsCache,
+    } from '../composables/useThreadCountsCache';
     import {
         MittEventKey,
         Preference,
@@ -145,14 +131,9 @@
         return acc;
     }, {} as Record<string, HTMLElement | null>));
 
-    interface ThreadCounts {
-        unresolved: number;
-        mine: number;
-        mineWithResponses: number;
-    }
-
     // Last known counts per merge request, so badges show right away on the next visit
-    const cachedCounts: Ref<Map<string, ThreadCounts>> = useLocalStorage(`${APP_NAMESPACE}/unresolved-threads`, ref(new Map()));
+    const cachedCounts = useThreadCountsCache();
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content || '';
     const MAX_CACHED_COUNTS = 500;
     const pendingIds = new Set<string>();
 
@@ -203,42 +184,103 @@
     });
 
     const unresolvedThreadsCount = computed(() => new Map([...threadCounts.value].map(([id, counts]) => [id, counts?.unresolved || 0])));
-    const myUnresolvedThreadsCount = computed(() => new Map([...threadCounts.value].map(([id, counts]) => [id, counts?.mine || 0])));
-    const myUnresolvedThreadsWithResponseCount = computed(() => new Map([...threadCounts.value].map(([id, counts]) => [id, counts?.mineWithResponses || 0])));
+
+    // One badge for your own unresolved threads, highlighted when someone replied to them
+    const myBadges = computed(() => {
+        const badges: Map<string, { count: number, hasResponses: boolean, title: string }> = new Map();
+
+        threadCounts.value.forEach((counts, id) => {
+            const withResponses = isShowMyUnresolvedWithResponsesEnabled.value ? counts?.mineWithResponses || 0 : 0;
+            const mine = counts?.mine || 0;
+
+            if (withResponses) {
+                badges.set(id, {
+                    count: withResponses,
+                    hasResponses: true,
+                    title: `${withResponses} of your ${mine} unresolved ${mine === 1 ? 'thread has' : 'threads have'} a reply`,
+                });
+            } else if (mine) {
+                badges.set(id, {
+                    count: mine,
+                    hasResponses: false,
+                    title: `Your ${mine} unresolved ${mine === 1 ? 'thread' : 'threads'}, without replies`,
+                });
+            }
+        });
+
+        return badges;
+    });
+
+    // Rows where GitLab shows thread status itself, as "Resolved" or "1 of 3"
+    const nativeThreadStatusIds: Ref<Set<string>> = shallowRef(new Set());
+
+    function rememberCounts(iid: IID, counts: ThreadCounts) {
+        const key = cacheKey(iid);
+        cachedCounts.value.delete(key);
+        cachedCounts.value.set(key, counts);
+        if (cachedCounts.value.size > MAX_CACHED_COUNTS) {
+            cachedCounts.value.delete(cachedCounts.value.keys().next().value!);
+        }
+    }
+
+    function fetchDiscussionsOf(iid: IID) {
+        const id = getIid(iid);
+        const endpoint = `/api/v4/projects/${encodeURIComponent(getProjectPath(iid))}/${isMergeRequest ? 'merge_requests' : 'issues'}/${id}/discussions`;
+
+        return useFetchPaging(endpoint)
+            .then(({ data }) => {
+                if (data?.value) {
+                    discussions.value.set(id, data?.value || [] as GitLabDiscussion[]);
+                    rememberCounts(iid, countThreads(data.value));
+                }
+            });
+    }
+
+    /**
+     * Counts unresolved threads with one request per project first, so only merge requests that
+     * have some need their discussions fetched. Falls back to fetching them all.
+     */
+    async function fetchMergeRequestDiscussions(projectPath: string, iids: IID[]) {
+        const counts = await fetchUnresolvedThreadCounts(projectPath, iids.map(getIid), csrfToken);
+
+        return Promise.all(iids.map((iid) => {
+            if (counts?.get(getIid(iid)) === 0) {
+                discussions.value.set(getIid(iid), []);
+                rememberCounts(iid, countThreads([]));
+                return null;
+            }
+
+            return fetchDiscussionsOf(iid);
+        }));
+    }
 
     function fetchDiscussions(isForced: boolean = false) {
-        extractIssuableIds.value.forEach((iid) => {
-            const path = getProjectPath(iid);
+        const toFetch = extractIssuableIds.value.filter((iid) => {
             const id = getIid(iid);
-            if (!id || pendingIds.has(id)) {
-                return;
+            return id && !pendingIds.has(id) && (isForced || !discussions.value.has(id));
+        });
+        toFetch.forEach(iid => pendingIds.add(getIid(iid)));
+
+        const release = (iids: IID[]) => () => iids.forEach(iid => pendingIds.delete(getIid(iid)));
+
+        if (!isMergeRequest) {
+            toFetch.forEach(iid => fetchDiscussionsOf(iid).finally(release([iid])));
+            return;
+        }
+
+        const byProject = new Map<string, IID[]>();
+        toFetch.forEach(iid => byProject.set(getProjectPath(iid), [...(byProject.get(getProjectPath(iid)) || []), iid]));
+        byProject.forEach((iids, projectPath) => {
+            for (let start = 0; start < iids.length; start += 100) {
+                const batch = iids.slice(start, start + 100);
+                fetchMergeRequestDiscussions(projectPath, batch).finally(release(batch));
             }
-
-            if (!isForced && discussions.value.has(id)) {
-                return;
-            }
-
-            pendingIds.add(id);
-            const endpoint = `/api/v4/projects/${encodeURIComponent(path)}/${isMergeRequest ? 'merge_requests' : 'issues'}/${id}/discussions`;
-            useFetchPaging(endpoint)
-                .then(({ data }) => {
-                    if (data?.value) {
-                        discussions.value.set(id, data?.value || [] as GitLabDiscussion[]);
-
-                        const key = cacheKey(iid);
-                        cachedCounts.value.delete(key);
-                        cachedCounts.value.set(key, countThreads(data.value));
-                        if (cachedCounts.value.size > MAX_CACHED_COUNTS) {
-                            cachedCounts.value.delete(cachedCounts.value.keys().next().value!);
-                        }
-                    }
-                })
-                .finally(() => pendingIds.delete(id));
         });
     }
 
     function extractIssuableIids() {
         const values: Array<string | Array<string>> = [];
+        const nativeIds = new Set<string>();
         document.querySelectorAll('.issuable-list > li .issuable-reference, div[data-testid="merge-request-dashboard-tab"] div[data-testid="merge-request"] > div[role="cell"]:nth-child(2) > div:not([data-testid="labels-container"])')
             .forEach((el) => {
                 const text = el.textContent || '';
@@ -266,6 +308,12 @@
                 const metaElement = containerElement?.querySelector('li[data-testid="issuable-comments"], li:has(svg[data-testid="comments-icon"]), div[role="cell"] > div:has(svg[data-testid="comments-icon"])');
 
                 const teleportId = getTeleportId(resolvedId);
+                const hasNativeThreadStatus = [...containerElement?.querySelectorAll('.gl-badge, .badge') || []]
+                    .some(badge => /^(Resolved|\d+ of \d+)$/.test(badge.textContent?.trim() || ''));
+                if (hasNativeThreadStatus) {
+                    nativeIds.add(teleportId);
+                }
+
                 if (!document.getElementById(teleportId) && metaElement?.parentElement) {
                     const placeholderElement = document.createElement('div');
                     placeholderElement.style.display = 'flex';
@@ -277,6 +325,9 @@
             });
 
         extractIssuableIds.value = values;
+        if ([...nativeIds].join() !== [...nativeThreadStatusIds.value].join()) {
+            nativeThreadStatusIds.value = nativeIds;
+        }
 
         fetchDiscussions();
     }
