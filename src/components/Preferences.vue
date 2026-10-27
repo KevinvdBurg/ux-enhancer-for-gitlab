@@ -194,6 +194,7 @@
 >
     import {
         mdiAccountCheckOutline,
+        mdiArrowCollapseVertical,
         mdiAccountGroupOutline,
         mdiAccountCircleOutline,
         mdiCheckDecagramOutline,
@@ -213,10 +214,12 @@
         mdiKeyboardOutline,
         mdiLightbulbOffOutline,
         mdiMapMarkerOutline,
+        mdiNewBox,
         mdiScriptTextOutline,
         mdiStarOutline,
         mdiTabPlus,
         mdiTagOutline,
+        mdiViewDashboardOutline,
         mdiViewSequentialOutline,
     } from '@mdi/js';
     import { onClickOutside } from '@vueuse/core';
@@ -569,6 +572,33 @@
                 isGitlabIcon: false,
                 iconClassName: '',
                 defaultValue: false,
+            },
+            {
+                label: 'Summary bar on merge requests',
+                title: 'Status, open threads, pipeline, approvals and commits behind under the tabs, each a click away',
+                key: Preference.MR_SUMMARY_BAR,
+                icon: mdiViewDashboardOutline,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: true,
+            },
+            {
+                label: 'Fold history and resolved threads',
+                title: 'Runs of pushes, checklist ticks and resolved threads in the activity become one line you can open',
+                key: Preference.MR_CLEAN_ACTIVITY,
+                icon: mdiArrowCollapseVertical,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: true,
+            },
+            {
+                label: 'Mark activity since my last visit',
+                title: 'Comments by others since you last opened the merge request get a marker and stay unfolded',
+                key: Preference.MR_NEW_SINCE_VISIT,
+                icon: mdiNewBox,
+                isGitlabIcon: false,
+                iconClassName: '',
+                defaultValue: true,
             },
             {
                 label: 'Separate drafts into their own tab',

@@ -86,6 +86,114 @@ li.merge-request {
     }
 }
 
+// --- Merge request overview ---
+
+#glab-enhancer-summary-bar:empty {
+    display: none;
+}
+
+.glab-enhancer-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem 0.75rem;
+    padding: 0.5rem 0;
+    font-size: 0.875rem;
+}
+
+.glab-enhancer-summary__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--gl-text-color-default, #3a383f);
+    text-decoration: none;
+
+    svg {
+        width: 1rem;
+        height: 1rem;
+        fill: currentColor;
+    }
+
+    &:is(button, a):hover {
+        text-decoration: underline;
+    }
+
+    &--danger {
+        color: var(--gl-status-danger-icon-color, #dd2b0e);
+    }
+
+    &--success {
+        color: var(--gl-status-success-icon-color, #108548);
+    }
+
+    &--muted {
+        color: var(--gl-text-color-subtle, #626168);
+    }
+
+    &--new {
+        color: var(--gl-badge-tier-text-color-default, #5943b6);
+        font-weight: 600;
+    }
+}
+
+#notes-list {
+    > li.glab-enhancer-folded {
+        display: none !important;
+    }
+
+    > li.glab-enhancer-new {
+        box-shadow: inset 3px 0 0 var(--gl-color-purple-500, #7b58cf);
+    }
+}
+
+li.glab-enhancer-fold {
+    list-style: none;
+}
+
+.glab-enhancer-fold__toggle {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    margin: 0.25rem 0;
+    padding: 0.375rem 0.5rem 0.375rem 1rem;
+    border: 0;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--gl-text-color-subtle, #626168);
+    font-size: 0.875rem;
+    text-align: left;
+
+    strong {
+        color: var(--gl-text-color-default, #3a383f);
+    }
+
+    &:hover {
+        background: var(--gl-background-color-subtle, #fbfafd);
+    }
+
+    &[aria-expanded="true"] .glab-enhancer-fold__chevron {
+        transform: rotate(90deg);
+    }
+}
+
+.glab-enhancer-fold__chevron {
+    display: inline-block;
+    transition: transform 0.15s ease-in-out;
+}
+
+.glab-enhancer-fold__text {
+    flex: 1 1 auto;
+}
+
+.glab-enhancer-fold__time {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+}
+
 li.merge-request-draft {
     opacity: 0.3;
     transition: opacity 0.3s ease-in-out;

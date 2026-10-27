@@ -129,3 +129,45 @@ export async function fetchUnresolvedThreadCounts(projectPath: string, iids: str
         return null;
     }
 }
+
+export interface MergeRequestApprovals {
+    approved: boolean;
+    approvedBy: { nodes: Array<{ username: string }> };
+    approvalState: { rules: Array<{ name: string, type: string, approvalsRequired: number, approved: boolean }> };
+}
+
+/**
+ * Approval rules of one merge request. The REST API sums the rules into one number,
+ * which is not what GitLab shows. Resolves to null when GitLab cannot answer it.
+ */
+export async function fetchMergeRequestApprovals(projectPath: string, iid: number, csrfToken: string) {
+    try {
+        const response = await fetch('/api/graphql?is_custom=1', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({
+                query: `query($fullPath: ID!, $iid: String!) {
+                    project(fullPath: $fullPath) {
+                        mergeRequest(iid: $iid) {
+                            approved
+                            approvedBy { nodes { username } }
+                            approvalState { rules { name type approvalsRequired approved } }
+                        }
+                    }
+                }`,
+                variables: {
+                    fullPath: projectPath,
+                    iid: String(iid),
+                },
+            }),
+        });
+        const { data } = await response.json();
+
+        return (data?.project?.mergeRequest || null) as MergeRequestApprovals | null;
+    } catch {
+        return null;
+    }
+}

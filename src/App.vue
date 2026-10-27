@@ -21,6 +21,13 @@
             :current-project-path="projectPath"
         />
 
+        <MergeRequestOverview
+            v-if="isMergeRequestPage && iid && projectPath && csrfToken"
+            :csrf-token="csrfToken"
+            :current-project-path="projectPath"
+            :iid="iid"
+        />
+
         <MergeRequestDetail
             v-if="isMergeRequestPage && iid"
 
@@ -70,6 +77,7 @@
     import ContributorsSidebar from './components/ContributorsSidebar.vue';
     import IssueDetail from './components/IssueDetail.vue';
     import MergeRequestDetail from './components/MergeRequestDetail.vue';
+    import MergeRequestOverview from './components/MergeRequestOverview.vue';
     import MergeRequestRows from './components/MergeRequestRows.vue';
     import MyUnresolvedThreads from './components/MyUnresolvedThreads.vue';
     import Preferences from './components/Preferences.vue';
